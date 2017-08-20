@@ -1,0 +1,8 @@
+# ignore .o object files and .a library files
+*.[oa]
+# ignore Atom's symbols files
+*.gch
+
+# don't include generated binaries
+bin/
+obj/
