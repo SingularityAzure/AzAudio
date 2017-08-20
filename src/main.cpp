@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "log.hpp"
+#include "audio.h"
 
 #ifdef __unix
 #include <csignal>
@@ -28,12 +29,18 @@ void handler(int sig) {
 }
 #endif
 
+void logCallback(const char* message) {
+    sys::cout << "AzureAudio: " << message << std::endl;
+}
+
 int main(int argumentCount, char** argumentValues) {
     #ifdef __unix
     signal(SIGSEGV, handler);
     #endif
     try {
-        sys::cout << "Hello world!" << std::endl;
+        azaHelloWorld();
+        azaSetLogCallback(logCallback);
+        azaHelloWorld();
     } catch (std::runtime_error& e) {
         sys::cout << "Runtime Error: " << e.what() << std::endl;
     }

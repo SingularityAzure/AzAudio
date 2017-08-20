@@ -1,10 +1,12 @@
 IDIR=include
 CC=g++
+CC_C=gcc
 WCC=i686-w64-mingw32-g++
-WRC=i686-w64-mingw32-windres $(SDIR)/resources.rc -O coff
-RCFLAGS=-I $(IDIR)
-CFLAGS=-I$(IDIR) -Wall -std=c++17
+WCC_C=i686-w64-mingw32-gcc
+CFLAGS=-I$(IDIR) -Wall -std=c++11
+CFLAGS_C=-I$(IDIR) -Wall
 WCFLAGS=-D_GLIBCXX_USE_NANOSLEEP -static-libgcc -static-libstdc++ -static -lpthread
+WCFLAGS_C=-static-libgcc
 
 BDIR=bin
 SDIR=src
@@ -14,58 +16,46 @@ LDIR=lib
 LIBS_L=-lpthread
 LIBS_W=
 
-_DEPS =
+_DEPS = log.hpp
+_DEPS_C = audio.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+DEPS_C = $(patsubst %,$(IDIR)/%,$(_DEPS_C))
 
 _OBJ = main.o log.o
-OBJ_LD = $(patsubst %,$(ODIR)/Linux/Debug/%,$(_OBJ))
-OBJ_WD = $(patsubst %,$(ODIR)/Windows/Debug/%,$(_OBJ))
-OBJ_L = $(patsubst %,$(ODIR)/Linux/Release/%,$(_OBJ))
-OBJ_W = $(patsubst %,$(ODIR)/Windows/Release/%,$(_OBJ))
+_OBJ_C = audio.o
+OBJ_L = $(patsubst %,$(ODIR)/Linux/cpp/%,$(_OBJ))
+OBJ_W = $(patsubst %,$(ODIR)/Windows/cpp/%,$(_OBJ))
+OBJ_L_C = $(patsubst %,$(ODIR)/Linux/c/%,$(_OBJ_C))
+OBJ_W_C = $(patsubst %,$(ODIR)/Windows/c/%,$(_OBJ_C))
 
 
-$(ODIR)/Linux/Debug/%.o: $(SDIR)/%.cpp $(DEPS)
+$(ODIR)/Linux/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
 	$(CC) -c -o $@ $< -g -rdynamic $(CFLAGS)
 
-$(ODIR)/Windows/Debug/%.o: $(SDIR)/%.cpp $(DEPS)
+$(ODIR)/Windows/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
 	$(WCC) -c -o $@ $< -g $(CFLAGS)
 
-$(ODIR)/Linux/Release/%.o: $(SDIR)/%.cpp $(DEPS)
-	$(CC) -c -o $@ $< -O3 $(CFLAGS) -DNDEBUG
+$(ODIR)/Linux/c/%.o: $(SDIR)/%.c $(DEPS_C)
+	$(CC_C) -c -o $@ $< -g -rdynamic $(CFLAGS_C)
 
-$(ODIR)/Windows/Release/%.o: $(SDIR)/%.cpp $(DEPS)
-	$(WCC) -c -o $@ $< -O3 $(CFLAGS) -DNDEBUG
+$(ODIR)/Windows/c/%.o: $(SDIR)/%.c $(DEPS_C)
+	$(WCC_C) -c -o $@ $< -g $(CFLAGS_C)
 
-debugl: $(OBJ_LD)
-	g++ -o $(BDIR)/Linux/Debug/Test $^ -g -rdynamic $(CFLAGS) $(LIBS_L)
+linux: $(OBJ_L_C) $(OBJ_L)
+	g++ -o $(BDIR)/Linux/Test $^ -g -rdynamic $(CFLAGS) $(LIBS_L)
 
-debugw: $(OBJ_WD)
-	i686-w64-mingw32-g++ -o $(BDIR)/Windows/Debug/Test.exe $^ -g $(CFLAGS) $(WCFLAGS) $(LIBS_W)
+windows: $(OBJ_W_C) $(OBJ_W)
+	i686-w64-mingw32-g++ -o $(BDIR)/Windows/Test.exe $^ -g $(CFLAGS) $(WCFLAGS) $(LIBS_W)
 
-debug: debugl debugw
-
-releasel: $(OBJ_L)
-	g++ -o $(BDIR)/Linux/Release/Arcade $^ $(CFLAGS) $(LIBS_L)
-
-releasew: $(OBJ_W) $(ODIR)/Windows/resources.o
-	i686-w64-mingw32-g++ -o $(BDIR)/Windows/Release/Arcade.exe $^ $(CFLAGS) $(WCFLAGS) $(LIBS_W)
-
-release: releasel releasew
-
+all: linux windows
 
 .PHONY: clean runl runw rundl rundw
 
 clean:
-	rm -f $(ODIR)/Linux/Debug/*.o $(ODIR)/Windows/Debug/*.o $(ODIR)/Linux/Release/*.o $(ODIR)/Windows/Release/*.o *~ core $(INCDIR)/*~
+	rm -f $(ODIR)/Linux/c/*.o $(ODIR)/Windows/c/*.o $(ODIR)/Linux/cpp/*.o $(ODIR)/Windows/cpp/*.o *~ core $(INCDIR)/*~
 
 runl:
-	./bin/Linux/Release/Test
+	./bin/Linux/Test
 
 runw:
-	./bin/Windows/Release/Test.exe
-
-rundl:
-	./bin/Linux/Debug/Test
-
-rundw:
-	./bin/Windows/Debug/Test.exe
+	./bin/Windows/Test.exe
