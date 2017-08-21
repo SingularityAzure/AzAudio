@@ -38,9 +38,16 @@ int main(int argumentCount, char** argumentValues) {
     signal(SIGSEGV, handler);
     #endif
     try {
-        azaHelloWorld();
         azaSetLogCallback(logCallback);
-        azaHelloWorld();
+        azaStream stream;
+        if (azaMicTestStart(&stream) != AZA_SUCCESS) {
+            throw std::runtime_error("Failed to start mic test!");
+        }
+        sys::cout << "Press ENTER to stop" << std::endl;
+        std::cin.get();
+        if (azaMicTestStop(&stream) != AZA_SUCCESS) {
+            throw std::runtime_error("Error while trying to stop mic test!");
+        }
     } catch (std::runtime_error& e) {
         sys::cout << "Runtime Error: " << e.what() << std::endl;
     }

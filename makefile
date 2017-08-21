@@ -13,7 +13,7 @@ SDIR=src
 ODIR=obj
 LDIR=lib
 
-LIBS_L=-lpthread
+LIBS_L=-lpthread -lportaudio
 LIBS_W=
 
 _DEPS = log.hpp
