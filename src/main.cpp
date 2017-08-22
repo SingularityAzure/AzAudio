@@ -38,16 +38,20 @@ int main(int argumentCount, char** argumentValues) {
     signal(SIGSEGV, handler);
     #endif
     try {
+        azaInit();
         azaSetLogCallback(logCallback);
         azaStream stream;
-        if (azaMicTestStart(&stream) != AZA_SUCCESS) {
+        azaMixData *data = (azaMixData*)malloc(sizeof(azaMixData));
+        azaMixDataInit(data);
+        if (azaMicTestStart(&stream, data) != AZA_SUCCESS) {
             throw std::runtime_error("Failed to start mic test!");
         }
         sys::cout << "Press ENTER to stop" << std::endl;
         std::cin.get();
-        if (azaMicTestStop(&stream) != AZA_SUCCESS) {
+        if (azaMicTestStop(&stream, data) != AZA_SUCCESS) {
             throw std::runtime_error("Error while trying to stop mic test!");
         }
+        //azaMixDataClean(&data);
     } catch (std::runtime_error& e) {
         sys::cout << "Runtime Error: " << e.what() << std::endl;
     }
