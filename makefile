@@ -14,7 +14,7 @@ ODIR=obj
 LDIR=lib
 
 LIBS_L=-lpthread -lportaudio
-LIBS_W=
+LIBS_W=-lportaudio -lwinmm
 
 _DEPS = log.hpp
 _DEPS_C = audio.h

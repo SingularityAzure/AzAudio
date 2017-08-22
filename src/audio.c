@@ -155,6 +155,10 @@ float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain
         peak = 0.0f;
     data->gain += peak - data->gainBuffer[data->index];
     float average = data->gain / AZA_LOOKAHEAD_SAMPLES;
+    if (average > peak) {
+        data->gain += average - peak;
+        peak = average;
+    }
     data->gainBuffer[data->index] = peak;
 
     data->valBuffer[data->index] = input;
@@ -238,7 +242,7 @@ float azaReverb(float input, azaReverbData *data, float amount, float roomsize, 
                 azaLowPass(
                     output/(float)(1+i),
                 &data->lowPass[i], 44100.0f, 8000.0f),
-            &data->delay[i], (float)(i+4) / (AZA_REVERB_DELAY_COUNT + 4.0f), 1.0f) - output/(float)(1+i);
+            &data->delay[i], (float)(i+8) / (AZA_REVERB_DELAY_COUNT + 8.0f), 1.0f) - output/(float)(1+i);
     }
     output *= amount;
     return output + input;
@@ -276,18 +280,19 @@ static int azaPortAudioCallback( const void *inputBuffer, void *outputBuffer,
         float clip = 0.0f;
         for (i=0; i<framesPerBuffer*2; i++)
         {
-            *out = *in;
-            *out = azaDelay(*out, &mixData->delayData[i%2], 0.5f, 0.05f);
-            *out = azaReverb(*out, &mixData->reverbData[i%2], 0.125f, 4.0f, 0.5f);
-            *out = azaHighPass(*out, &mixData->lowPassData[i%2], 44100.0f, 20.0f);
-            *out = azaCompressor(*out, &mixData->compressorData[i%2], 44100.0f, -24.0f, 2.0f, 50.0f, 200.0f);
-            *out = azaLookaheadLimiter(*out, &mixData->limiterData[i%2], 12.0f);
+            *out = *in * 16.0f;
+            *out = azaHighPass(*out, &mixData->lowPassData[i%2], 44100.0f, 40.0f);
+            *out = azaDelay(*out, &mixData->delayData[i%2], 0.4f, 0.05f);
+            *out = azaReverb(*out, &mixData->reverbData[i%2], 0.1f, 1.0f, 0.5f);
+            *out = azaCompressor(*out, &mixData->compressorData[i%2], 44100.0f, -18.0f, 2.0f, 50.0f, 200.0f);
+            *out = azaLookaheadLimiter(*out, &mixData->limiterData[i%2], 6.0f);
 
             if (*out > clip) {
                 clip = *out;
             }
             out++;
-            in++;
+            if (i%2)
+                in++;
         }
         if (clip > 1.0f)
             printf("clipped: %f\n", clip);
@@ -315,9 +320,10 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
         azaError = AZA_ERROR_PORTAUDIO;
         return azaError;
     }
-    inputParameters.channelCount = 2;       /* stereo input */
+    inputParameters.channelCount = 1;       /* mono input */
     inputParameters.sampleFormat = paFloat32;
-    inputParameters.suggestedLatency = Pa_GetDeviceInfo( inputParameters.device )->defaultLowInputLatency;
+    inputParameters.suggestedLatency = 4000.0 / 44100.0;
+    //inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputParameters.device)->defaultLowInputLatency;
     inputParameters.hostApiSpecificStreamInfo = NULL;
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
@@ -328,7 +334,8 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
     }
     outputParameters.channelCount = 2;       /* stereo output */
     outputParameters.sampleFormat = paFloat32;
-    outputParameters.suggestedLatency = Pa_GetDeviceInfo( outputParameters.device )->defaultHighOutputLatency;
+    outputParameters.suggestedLatency = 4000.0 / 44100.0;
+    //outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = NULL;
 
     err = Pa_OpenStream(
@@ -345,6 +352,9 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
         azaError = AZA_ERROR_PORTAUDIO;
         return azaError;
     }
+    const PaStreamInfo *streamInfo = Pa_GetStreamInfo((PaStream*)stream->stream);
+    double samplerate = streamInfo->sampleRate;
+    printf("Stream latency input: %f output: %f samplerate: %f\n",samplerate*streamInfo->inputLatency, samplerate*streamInfo->outputLatency, samplerate);
 
     err = Pa_StartStream((PaStream*)stream->stream);
     if (err != paNoError) {
