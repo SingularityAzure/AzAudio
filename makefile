@@ -30,21 +30,27 @@ OBJ_W_C = $(patsubst %,$(ODIR)/Windows/c/%,$(_OBJ_C))
 
 
 $(ODIR)/Linux/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
+	@mkdir -p $(@D)
 	$(CC) -c -o $@ $< -g -rdynamic $(CFLAGS)
 
 $(ODIR)/Windows/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
+	@mkdir -p $(@D)
 	$(WCC) -c -o $@ $< -g $(CFLAGS)
 
 $(ODIR)/Linux/c/%.o: $(SDIR)/%.c $(DEPS_C)
+	@mkdir -p $(@D)
 	$(CC_C) -c -o $@ $< -g -rdynamic $(CFLAGS_C)
 
 $(ODIR)/Windows/c/%.o: $(SDIR)/%.c $(DEPS_C)
+	@mkdir -p $(@D)
 	$(WCC_C) -c -o $@ $< -g $(CFLAGS_C)
 
 linux: $(OBJ_L_C) $(OBJ_L)
+	@mkdir -p $(BDIR)/Linux
 	g++ -o $(BDIR)/Linux/Test $^ -g -rdynamic $(CFLAGS) $(LIBS_L)
 
 windows: $(OBJ_W_C) $(OBJ_W)
+	@mkdir -p $(BDIR)/Linux
 	i686-w64-mingw32-g++ -o $(BDIR)/Windows/Test.exe $^ -g $(CFLAGS) $(WCFLAGS) $(LIBS_W)
 
 all: linux windows
