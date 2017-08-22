@@ -114,7 +114,7 @@ float azaCompressor(float input, azaCompressorData *data, float samplerate,
 
 float azaDelay(float input, azaDelayData *data, float feedback, float amount);
 
-float azaReverb(float input, azaReverbData *data, float amount);
+float azaReverb(float input, azaReverbData *data, float amount, float roomsize, float color);
 
 float azaLowPass(float input, azaLowPassData *data, float samplerate, float frequency);
 

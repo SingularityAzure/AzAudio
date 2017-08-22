@@ -220,15 +220,17 @@ float azaDelay(float input, azaDelayData *data, float feedback, float amount) {
     return data->buffer[data->index] * amount + input;
 }
 
-float azaReverb(float input, azaReverbData *data, float amount) {
+float azaReverb(float input, azaReverbData *data, float amount, float roomsize, float color) {
     float output = input;
+    float feedback = 1.0f - (0.2f / roomsize);
+    color *= 2400.0f;
     for (int i = 0; i < AZA_REVERB_DELAY_COUNT*2/3; i++) {
         output +=
             azaDelay(
                 azaLowPass(
                     input,
-                &data->lowPass[i], 44100.0f, 1600.0f),
-            &data->delay[i], 0.96f, 1.0f) - input;
+                &data->lowPass[i], 44100.0f, color),
+            &data->delay[i], feedback, 1.0f) - input;
     }
     for (int i = AZA_REVERB_DELAY_COUNT*2/3; i < AZA_REVERB_DELAY_COUNT; i++) {
         output +=
@@ -236,9 +238,9 @@ float azaReverb(float input, azaReverbData *data, float amount) {
                 azaLowPass(
                     output/(float)(1+i),
                 &data->lowPass[i], 44100.0f, 8000.0f),
-            &data->delay[i], (float)(i+8) / (AZA_REVERB_DELAY_COUNT + 8.0f), 1.0f) - output/(float)(1+i);
+            &data->delay[i], (float)(i+4) / (AZA_REVERB_DELAY_COUNT + 4.0f), 1.0f) - output/(float)(1+i);
     }
-    output *= amount / AZA_REVERB_DELAY_COUNT * 16.0f;
+    output *= amount;
     return output + input;
 }
 
@@ -272,38 +274,20 @@ static int azaPortAudioCallback( const void *inputBuffer, void *outputBuffer,
     else
     {
         float clip = 0.0f;
-        for (i=0; i<framesPerBuffer; i++)
+        for (i=0; i<framesPerBuffer*2; i++)
         {
-            *out++ =
-            azaLookaheadLimiter(
-                azaCompressor(
-                    azaHighPass(
-                        azaDelay(
-                            azaReverb(
-                                *(in++),
-                            &(mixData->reverbData[0]), 0.25f),
-                        &(mixData->delayData[0]), 0.5f, 0.02f),
-                    &mixData->lowPassData[0], 44100.0f, 20.0f),
-                &(mixData->compressorData[0]), 44100.0f, -12.0f, 2.0f, 50.0f, 200.0f),
-            &mixData->limiterData[0], 6.0f);
-            if (*(out-1) > clip) {
-                clip = *(out-1);
+            *out = *in;
+            *out = azaDelay(*out, &mixData->delayData[i%2], 0.5f, 0.05f);
+            *out = azaReverb(*out, &mixData->reverbData[i%2], 0.125f, 4.0f, 0.5f);
+            *out = azaHighPass(*out, &mixData->lowPassData[i%2], 44100.0f, 20.0f);
+            *out = azaCompressor(*out, &mixData->compressorData[i%2], 44100.0f, -24.0f, 2.0f, 50.0f, 200.0f);
+            *out = azaLookaheadLimiter(*out, &mixData->limiterData[i%2], 12.0f);
+
+            if (*out > clip) {
+                clip = *out;
             }
-            *out++ =
-            azaLookaheadLimiter(
-                azaCompressor(
-                    azaHighPass(
-                        azaDelay(
-                            azaReverb(
-                                *(in++),
-                            &(mixData->reverbData[1]), 0.25f),
-                        &(mixData->delayData[1]), 0.5f, 0.02f),
-                    &mixData->lowPassData[1], 44100.0f, 20.0f),
-                &(mixData->compressorData[1]), 44100.0f, -12.0f, 2.0f, 50.0f, 200.0f),
-            &mixData->limiterData[1], 6.0f);
-            if (*(out-1) > clip) {
-                clip = *(out-1);
-            }
+            out++;
+            in++;
         }
         if (clip > 1.0f)
             printf("clipped: %f\n", clip);
