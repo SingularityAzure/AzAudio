@@ -14,3 +14,7 @@ A secondary goal will be to implement audio file I/O, but for now it will take r
 Dependencies:
 - Using PortAudio for hardware and OS interface
 - For threading, full C++11 support will be required
+
+# Copyright
+- PortAudio Portable Real-Time Audio Library 
+Copyright (c) 1999-2011 Ross Bencina, Phil Burk, MIT License
