@@ -8,17 +8,20 @@ div {
 
 body {
     background-color: #00aaff;
+    background-image: url("background.png");
+    background-size: cover;
     padding: 0;
-    font-family: "Asap", sans-serif;
+    font-family: "Nunito", sans-serif;
 }
 
 code {
     display: block;
-    font-family: Courier, monospace;
-    padding: 16px;
+    font-family: "Source Code Pro", Courier, monospace;
     margin: 32px 0;
     border: 2px solid orange;
     border-radius: 8px;
+    background-color: #cef;
+    overflow: hidden;
 }
 
 
@@ -28,7 +31,7 @@ h1, h2, h3, h4, h5, h6 {
     margin: 0;
     padding: 0.5em;
     text-align: center;
-    font-family: "DejaVu Sans", sans-serif;
+    font-family: "Signika", sans-serif;
 }
 
 h1 {
@@ -59,11 +62,13 @@ h4 {
 h5 {
     font-size: 20pt;
     text-align: left;
+    margin-left: 32px;
 }
 
 h6 {
     font-size: 16pt;
     text-align: left;
+    margin-left: 24px;
 }
 
 a {
@@ -90,7 +95,7 @@ ul {
 ul li {
     margin: 0;
     padding: 8px;
-    padding-left: 32px;
+    padding-left: 64px;
 }
 
 ul li::before {
@@ -110,10 +115,14 @@ ol li {
 }
 
 ol li::before {
-    content: counter(codelineCounter) " | ";
+    content: counter(codelineCounter);
     color: grey;
+    border-right: 2px solid grey;
+    margin-right: 1em;
+    background-color: #bce;
     float: left;
-    width: 4em;
+    text-align: center;
+    width: 3em;
 }
 
 p {
@@ -151,7 +160,7 @@ section {
 #background {
     padding: 0;
     background-position:50% 0;
-    background-image: url("background.jpg");
+    background-image: url("mosaic.png");
     background-repeat: repeat;
 }
 
