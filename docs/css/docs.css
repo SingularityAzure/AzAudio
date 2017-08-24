@@ -1,45 +1,50 @@
-body, header, div, section, footer {
+body, header, div, section, footer, code {
     margin: 0;
-    padding: 8px;
 }
 
 div {
-    padding: 0;
+    padding: 8px;
 }
 
 body {
-    background-image: url("background.png");
-    background-size: 100% 100%;
-    background-attachment: fixed;
     background-color: #00aaff;
     padding: 0;
     font-family: "Asap", sans-serif;
 }
 
 code {
+    display: block;
     font-family: Courier, monospace;
+    padding: 16px;
+    margin: 32px 0;
+    border: 2px solid orange;
+    border-radius: 8px;
 }
+
+
 
 h1, h2, h3, h4, h5, h6 {
     /*text-shadow: 0 0 2px black;*/
     margin: 0;
-    padding: 0.1em;
+    padding: 0.5em;
     text-align: center;
     font-family: "DejaVu Sans", sans-serif;
 }
 
 h1 {
     color: white;
-    font-size: 40pt;
+    font-size: 64pt;
     text-shadow: 1px 1px 1px black, -1px 1px 1px black, -1px -1px 1px black, 1px -1px 1px black;
 }
 
 h2 {
-    font-size: 24pt;
+    font-size: 48pt;
+    color: #88ff00;
+    text-shadow: 1px 1px 1px black, -1px 1px 1px black, -1px -1px 1px black, 1px -1px 1px black;
 }
 
 h3 {
-    font-size: 18pt;
+    font-size: 32pt;
 }
 
 section h3 {
@@ -48,7 +53,16 @@ section h3 {
 }
 
 h4 {
-    font-size: 14pt;
+    font-size: 24pt;
+}
+
+h5 {
+    font-size: 20pt;
+    text-align: left;
+}
+
+h6 {
+    font-size: 16pt;
     text-align: left;
 }
 
@@ -66,37 +80,84 @@ a:hover {
 }
 
 ul {
+    font-size: 16pt;
     margin: 0;
     padding: 8px;
     padding-left: 16px;
     list-style: none;
 }
 
-li {
+ul li {
     margin: 0;
-    padding: 4px;
+    padding: 8px;
+    padding-left: 32px;
 }
 
-li::before {
+ul li::before {
     content: "-";
     font-weight: bold;
 }
 
+ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+ol li {
+    counter-increment: codelineCounter;
+    line-height: 1.5em;
+}
+
+ol li::before {
+    content: counter(codelineCounter) " | ";
+    color: grey;
+    float: left;
+    width: 4em;
+}
+
 p {
+    font-size: 16pt;
     text-align: justify;
 }
 
+header, footer {
+    height: 100vh;
+}
+
+.titleWrapper {
+    height: 320px;
+    padding: 0;
+    width: 100%;
+    position: relative;
+    top: 50%;
+    bottom: 50%;
+}
+
+.titleCentered {
+    display: block;
+    position: relative;
+    top: -50%;
+}
+
 section {
-    padding: 16px 64px;
-    margin: 16px 0;
+    padding: 32px 64px;
+    margin: 64px 0;
     border-top: 2px solid black;
     border-bottom: 2px solid black;
     background-color: white;
 }
 
+#background {
+    padding: 0;
+    background-position:50% 0;
+    background-image: url("background.jpg");
+    background-repeat: repeat;
+}
+
 .narrow {
     margin: 0 auto;
-    max-width: 800px;
+    max-width: 1000px;
 }
 
 .block {
@@ -104,9 +165,14 @@ section {
 }
 
 .indent {
-    padding-left: 32px;
+    padding-left: 64px;
 }
 
 .center {
     text-align: center;
+}
+
+.comment {
+    padding-left: 36px;
+    color: grey;
 }

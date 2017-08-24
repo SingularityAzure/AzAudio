@@ -4,12 +4,16 @@
     C bindings for core functions
 
     Most functions will return an int to indicate error status, where 0 is success
+
+    This library uses PortAudio for cross-platform device interface.
+        PortAudio Portable Real-Time Audio Library
+        Copyright (c) 1999-2011 Ross Bencina, Phil Burk, MIT License
 */
 
 //#define SYS_AUDIO_NO_STDIO // to remove stdio dependency
 
-#ifndef SYS_AUDIO_H
-#define SYS_AUDIO_H
+#ifndef AZURE_AUDIO_H
+#define AZURE_AUDIO_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,17 +21,22 @@ extern "C" {
 
 // Error handling
 #define AZA_SUCCESS 0
+    // The operation completed successfully
 #define AZA_ERROR_NULL_POINTER 1
+    // A pointer was unexpectedly null
 #define AZA_ERROR_PORTAUDIO 2
+    // PortAudio has generated an error
 
-#define AZA_RMS_SAMPLES 128
-#define AZA_LOOKAHEAD_SAMPLES 128
+#define AZURE_AUDIO_RMS_SAMPLES 128
+#define AZURE_AUDIO_LOOKAHEAD_SAMPLES 128
 
-void azaInit();
+int azaInit();
+
+int azaGetError();
 
 typedef struct {
     float squared;
-    float buffer[AZA_RMS_SAMPLES];
+    float buffer[AZURE_AUDIO_RMS_SAMPLES];
     int index;
 } azaRmsData;
 void azaRmsDataInit(azaRmsData *data);
@@ -41,8 +50,8 @@ void azaLowPassDataInit(azaLowPassData *data);
 void azaHighPassDataInit(azaHighPassData *data);
 
 typedef struct {
-    float gainBuffer[AZA_LOOKAHEAD_SAMPLES];
-    float valBuffer[AZA_LOOKAHEAD_SAMPLES];
+    float gainBuffer[AZURE_AUDIO_LOOKAHEAD_SAMPLES];
+    float valBuffer[AZURE_AUDIO_LOOKAHEAD_SAMPLES];
     int index;
     float gain;
 } azaLookaheadLimiterData;
@@ -63,13 +72,13 @@ typedef struct {
 void azaDelayDataInit(azaDelayData *data, int samples); // length in samples of the buffer
 void azaDelayDataClean(azaDelayData *data);
 
-#define AZA_REVERB_DELAY_COUNT 15
+#define AZURE_AUDIO_REVERB_DELAY_COUNT 15
 
 typedef struct {
-    azaDelayData delay[AZA_REVERB_DELAY_COUNT];
-    azaLowPassData lowPass[AZA_REVERB_DELAY_COUNT];
+    azaDelayData delay[AZURE_AUDIO_REVERB_DELAY_COUNT];
+    azaLowPassData lowPass[AZURE_AUDIO_REVERB_DELAY_COUNT];
 } azaReverbData;
-void azaReverbDataInit(azaReverbData *data, int samples[AZA_REVERB_DELAY_COUNT]);
+void azaReverbDataInit(azaReverbData *data, int samples[AZURE_AUDIO_REVERB_DELAY_COUNT]);
 void azaReverbDataClean(azaReverbData *data);
 
 void azaDefaultLogFunc(const char* message);
@@ -102,7 +111,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data);
 int azaMicTestStop(azaStream *stream, azaMixData *data);
 
 /*  gain is in db
-    This limiter increases latency by AZA_LOOKAHEAD_SAMPLES samples     */
+    This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */
 float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain);
 
 /*  threshold is in db
@@ -124,4 +133,4 @@ float azaHighPass(float input, azaLowPassData *data, float samplerate, float fre
 }
 #endif
 
-#endif // SYS_AUDIO_H
+#endif // AZURE_AUDIO_H

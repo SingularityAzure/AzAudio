@@ -9,7 +9,7 @@
 #include <math.h>
 #include <stdlib.h>
 
-#ifndef SYS_AUDIO_NO_STDIO
+#ifndef AZURE_AUDIO_NO_STDIO
 #include <stdio.h>
 #else
 #ifndef NULL
@@ -21,12 +21,18 @@ int azaError;
 
 fpLogCallback azaPrint;
 
-void azaInit() {
+int azaInit() {
     azaPrint = azaDefaultLogFunc;
+    azaError = AZA_SUCCESS;
+    return azaError;
+}
+
+int azaGetError() {
+    return azaError;
 }
 
 void azaDefaultLogFunc(const char* message) {
-    #ifndef SYS_AUDIO_NO_STDIO
+    #ifndef AZURE_AUDIO_NO_STDIO
     printf("AzureAudio: %s\n",message);
     #endif
 }
@@ -43,14 +49,14 @@ int azaSetLogCallback(fpLogCallback newLogFunc) {
 
 void azaRmsDataInit(azaRmsData *data) {
     data->squared = 0.0f;
-    for (int i = 0; i < AZA_RMS_SAMPLES; i++) {
+    for (int i = 0; i < AZURE_AUDIO_RMS_SAMPLES; i++) {
         data->buffer[i] = 0.0f;
     }
     data->index = 0;
 }
 
 void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data) {
-    for (int i = 0; i < AZA_LOOKAHEAD_SAMPLES; i++) {
+    for (int i = 0; i < AZURE_AUDIO_LOOKAHEAD_SAMPLES; i++) {
         data->gainBuffer[i] = 0.0f;
         data->valBuffer[i] = 0.0f;
     }
@@ -83,15 +89,15 @@ void azaDelayDataClean(azaDelayData *data) {
     free(data->buffer);
 }
 
-void azaReverbDataInit(azaReverbData *data, int samples[AZA_REVERB_DELAY_COUNT]) {
-    for (int i = 0; i < AZA_REVERB_DELAY_COUNT; i++) {
+void azaReverbDataInit(azaReverbData *data, int samples[AZURE_AUDIO_REVERB_DELAY_COUNT]) {
+    for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
         azaDelayDataInit(&data->delay[i], samples[i]);
         azaLowPassDataInit(&data->lowPass[i]);
     }
 }
 
 void azaReverbDataClean(azaReverbData *data) {
-    for (int i = 0; i < AZA_REVERB_DELAY_COUNT; i++) {
+    for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
         azaDelayDataClean(&data->delay[i]);
     }
 }
@@ -103,11 +109,11 @@ void azaMixDataInit(azaMixData *data) {
     azaCompressorDataInit(&data->compressorData[1]);
     azaDelayDataInit(&data->delayData[0], 40000);
     azaDelayDataInit(&data->delayData[1], 30000);
-    //int samples[AZA_REVERB_DELAY_COUNT] = {225, 556, 441, 341};
-    int samples[AZA_REVERB_DELAY_COUNT] = {1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116, 2111, 2133, 225, 556, 441, 341, 713};
-    int samplesL[AZA_REVERB_DELAY_COUNT];
-    int samplesR[AZA_REVERB_DELAY_COUNT];
-    for (int i = 0; i < AZA_REVERB_DELAY_COUNT; i++) {
+    //int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {225, 556, 441, 341};
+    int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116, 2111, 2133, 225, 556, 441, 341, 713};
+    int samplesL[AZURE_AUDIO_REVERB_DELAY_COUNT];
+    int samplesR[AZURE_AUDIO_REVERB_DELAY_COUNT];
+    for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
         samplesL[i] = samples[i];
         samplesR[i] = samples[i] + 23;
     }
@@ -141,9 +147,9 @@ float azaRms(float input, azaRmsData *data) {
     data->squared -= data->buffer[data->index];
     data->buffer[data->index] = input * input;
     data->squared += data->buffer[data->index++];
-    if (data->index >= AZA_RMS_SAMPLES)
+    if (data->index >= AZURE_AUDIO_RMS_SAMPLES)
         data->index = 0;
-    return sqrtf(data->squared/AZA_RMS_SAMPLES);
+    return sqrtf(data->squared/AZURE_AUDIO_RMS_SAMPLES);
 }
 
 float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain) {
@@ -154,7 +160,7 @@ float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain
     if (peak < 0.0f)
         peak = 0.0f;
     data->gain += peak - data->gainBuffer[data->index];
-    float average = data->gain / AZA_LOOKAHEAD_SAMPLES;
+    float average = data->gain / AZURE_AUDIO_LOOKAHEAD_SAMPLES;
     if (average > peak) {
         data->gain += average - peak;
         peak = average;
@@ -163,7 +169,7 @@ float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain
 
     data->valBuffer[data->index] = input;
 
-    data->index = (data->index+1)%AZA_LOOKAHEAD_SAMPLES;
+    data->index = (data->index+1)%AZURE_AUDIO_LOOKAHEAD_SAMPLES;
 
     if (average > data->gainBuffer[data->index])
         gain -= average;
@@ -228,7 +234,7 @@ float azaReverb(float input, azaReverbData *data, float amount, float roomsize, 
     float output = input;
     float feedback = 1.0f - (0.2f / roomsize);
     color *= 2400.0f;
-    for (int i = 0; i < AZA_REVERB_DELAY_COUNT*2/3; i++) {
+    for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT*2/3; i++) {
         output +=
             azaDelay(
                 azaLowPass(
@@ -236,13 +242,13 @@ float azaReverb(float input, azaReverbData *data, float amount, float roomsize, 
                 &data->lowPass[i], 44100.0f, color),
             &data->delay[i], feedback, 1.0f) - input;
     }
-    for (int i = AZA_REVERB_DELAY_COUNT*2/3; i < AZA_REVERB_DELAY_COUNT; i++) {
+    for (int i = AZURE_AUDIO_REVERB_DELAY_COUNT*2/3; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
         output +=
             azaDelay(
                 azaLowPass(
                     output/(float)(1+i),
                 &data->lowPass[i], 44100.0f, 8000.0f),
-            &data->delay[i], (float)(i+8) / (AZA_REVERB_DELAY_COUNT + 8.0f), 1.0f) - output/(float)(1+i);
+            &data->delay[i], (float)(i+8) / (AZURE_AUDIO_REVERB_DELAY_COUNT + 8.0f), 1.0f) - output/(float)(1+i);
     }
     output *= amount;
     return output + input;
