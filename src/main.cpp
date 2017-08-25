@@ -51,7 +51,7 @@ int main(int argumentCount, char** argumentValues) {
         if (azaMicTestStop(&stream, data) != AZA_SUCCESS) {
             throw std::runtime_error("Error while trying to stop mic test!");
         }
-        //azaMixDataClean(&data);
+        azaMixDataClean(data);
         free(data);
     } catch (std::runtime_error& e) {
         sys::cout << "Runtime Error: " << e.what() << std::endl;

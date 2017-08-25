@@ -103,6 +103,21 @@ void azaReverbDataClean(azaReverbData *data) {
 }
 
 void azaMixDataInit(azaMixData *data) {
+    for (int i = 0; i < 2; i++) {
+        data->highPassData[i].samplerate = 44100.0f;
+        data->highPassData[i].frequency = 40.0f;
+        data->delayData[i].amount = 0.2f;
+        data->delayData[i].feedback = 0.2f;
+        data->reverbData[i].amount = 0.1f;
+        data->reverbData[i].roomsize = 10.0f;
+        data->reverbData[i].color = 0.2f;
+        data->compressorData[i].samplerate = 44100.0f;
+        data->compressorData[i].threshold = -18.0f;
+        data->compressorData[i].ratio = 2.0f;
+        data->compressorData[i].attack = 50.0f;
+        data->compressorData[i].decay = 200.0f;
+        data->limiterData[i].gain = 6.0f;
+    }
     azaLookaheadLimiterDataInit(&data->limiterData[0]);
     azaLookaheadLimiterDataInit(&data->limiterData[1]);
     azaCompressorDataInit(&data->compressorData[0]);
@@ -121,28 +136,7 @@ void azaMixDataInit(azaMixData *data) {
     azaReverbDataInit(&data->reverbData[1], samplesR);
     azaHighPassDataInit(&data->highPassData[0]);
     azaHighPassDataInit(&data->highPassData[1]);
-    for (int i = 0; i < 2; i++) {
-        data->highPassData[i].samplerate = 44100.0f;
-        data->highPassData[i].frequency = 40.0f;
-        data->delayData[i].amount = 0.2f;
-        data->delayData[i].feedback = 0.2f;
-        data->reverbData[i].amount = 0.1f;
-        data->reverbData[i].roomsize = 10.0f;
-        data->reverbData[i].color = 0.2f;
-        data->compressorData[i].samplerate = 44100.0f;
-        data->compressorData[i].threshold = -18.0f;
-        data->compressorData[i].ratio = 2.0f;
-        data->compressorData[i].attack = 50.0f;
-        data->compressorData[i].decay = 200.0f;
-        data->limiterData[i].gain = 6.0f;
-    }
 }
-
-/*  *out = azaHighPass(*out, &mixData->lowPassData[i%2], 44100.0f, 40.0f);
-*out = azaDelay(*out, &mixData->delayData[i%2], 0.4f, 0.05f);
-*out = azaReverb(*out, &mixData->reverbData[i%2], 0.1f, 1.0f, 0.5f);
-*out = azaCompressor(*out, &mixData->compressorData[i%2], 44100.0f, -18.0f, 2.0f, 50.0f, 200.0f);
-*out = azaLookaheadLimiter(*out, &mixData->limiterData[i%2], 6.0f); */
 
 void azaMixDataClean(azaMixData *data) {
     azaDelayDataClean(&data->delayData[0]);

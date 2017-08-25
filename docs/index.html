@@ -157,11 +157,18 @@
                     <h6>Examples:</h6>
                     <code>
                         <ol>
-                            <li>AZA_PREPROCESSOR_VALUE</li>
-                            <li>AZURE_AUDIO_COMPILE_SETTING</li>
-                            <li>azaFoo( ... , azaFooData *data )</li>
-                            <li>azaFooDataInit( azaFooData *data )</li>
-                            <li>azaFooDataClean( azaFooData *data )</li>
+                            <li>&nbsp;</li>
+                            <li>#define AZA_PREPROCESSOR_VALUE</li>
+                            <li>#define AZURE_AUDIO_COMPILE_SETTING</li>
+                            <li>&nbsp;</li>
+                            <li>azaFooData data;</li>
+                            <li>data.someParameter = someValue;</li>
+                            <li><span class="comment">// It's important to set parameters first since memory may be allocated depending on them.</span></li>
+                            <li>azaFooDataInit( &data );</li>
+                            <li>float output;</li>
+                            <li>output = azaFoo( input , &data );</li>
+                            <li>azaFooDataClean( azaFooData &data );</li>
+                            <li></li>
                         </ol>
                     </code>
                 </div>
