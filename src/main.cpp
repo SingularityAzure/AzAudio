@@ -52,6 +52,7 @@ int main(int argumentCount, char** argumentValues) {
             throw std::runtime_error("Error while trying to stop mic test!");
         }
         //azaMixDataClean(&data);
+        free(data);
     } catch (std::runtime_error& e) {
         sys::cout << "Runtime Error: " << e.what() << std::endl;
     }

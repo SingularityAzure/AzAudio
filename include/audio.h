@@ -43,6 +43,9 @@ void azaRmsDataInit(azaRmsData *data);
 
 typedef struct {
     float output;
+    // Static parameters
+    float samplerate;
+    float frequency;
 } azaFilterData;
 typedef azaFilterData azaLowPassData;
 typedef azaFilterData azaHighPassData;
@@ -53,6 +56,8 @@ typedef struct {
     float gainBuffer[AZURE_AUDIO_LOOKAHEAD_SAMPLES];
     float valBuffer[AZURE_AUDIO_LOOKAHEAD_SAMPLES];
     int index;
+    float sum;
+    // Static parameters
     float gain;
 } azaLookaheadLimiterData;
 void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data);
@@ -60,7 +65,13 @@ void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data);
 typedef struct {
     azaRmsData rms;
     float attenuation;
-    float gain; // For monitoring
+    float gain; // For monitoring/debugging
+    // Static parameters
+    float samplerate;
+    float threshold;
+    float ratio;
+    float attack;
+    float decay;
 } azaCompressorData;
 void azaCompressorDataInit(azaCompressorData *data);
 
@@ -68,6 +79,9 @@ typedef struct {
     float *buffer; // Must be dynamically-allocated to allow different time spans
     int index;
     int samples;
+    // Static parameters
+    float feedback;
+    float amount;
 } azaDelayData;
 void azaDelayDataInit(azaDelayData *data, int samples); // length in samples of the buffer
 void azaDelayDataClean(azaDelayData *data);
@@ -77,6 +91,10 @@ void azaDelayDataClean(azaDelayData *data);
 typedef struct {
     azaDelayData delay[AZURE_AUDIO_REVERB_DELAY_COUNT];
     azaLowPassData lowPass[AZURE_AUDIO_REVERB_DELAY_COUNT];
+    // Static parameters
+    float amount;
+    float roomsize;
+    float color;
 } azaReverbData;
 void azaReverbDataInit(azaReverbData *data, int samples[AZURE_AUDIO_REVERB_DELAY_COUNT]);
 void azaReverbDataClean(azaReverbData *data);
@@ -101,7 +119,7 @@ typedef struct {
     azaCompressorData compressorData[2];
     azaDelayData delayData[2];
     azaReverbData reverbData[2];
-    azaLowPassData lowPassData[2];
+    azaHighPassData highPassData[2];
 } azaMixData;
 void azaMixDataInit(azaMixData *data);
 void azaMixDataClean(azaMixData *data);
@@ -110,24 +128,29 @@ int azaMicTestStart(azaStream *stream, azaMixData *data);
 
 int azaMicTestStop(azaStream *stream, azaMixData *data);
 
+// Returns the root mean square (RMS) loudness
+float azaRms(float input, azaRmsData *data);
+
+// Simple distortion to smooth harsh peaking
+float azaCubicLimiter(float input);
+
 /*  gain is in db
-    This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */
-float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data, float gain);
+    NOTE: This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */
+float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data);
 
 /*  threshold is in db
     ratio is defined as 1/x for positive values
         becomes absolute for negative values (where -1 is the same as infinity)
     attack and decay are in milliseconds        */
-float azaCompressor(float input, azaCompressorData *data, float samplerate,
-            float threshold, float ratio, float attack, float decay);
+float azaCompressor(float input, azaCompressorData *data);
 
-float azaDelay(float input, azaDelayData *data, float feedback, float amount);
+float azaDelay(float input, azaDelayData *data);
 
-float azaReverb(float input, azaReverbData *data, float amount, float roomsize, float color);
+float azaReverb(float input, azaReverbData *data);
 
-float azaLowPass(float input, azaLowPassData *data, float samplerate, float frequency);
+float azaLowPass(float input, azaLowPassData *data);
 
-float azaHighPass(float input, azaLowPassData *data, float samplerate, float frequency);
+float azaHighPass(float input, azaHighPassData *data);
 
 #ifdef __cplusplus
 }
