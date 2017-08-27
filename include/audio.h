@@ -133,12 +133,10 @@ int azaMicTestStart(azaStream *stream, azaMixData *data);
 int azaMicTestStop(azaStream *stream, azaMixData *data);
 
 // Returns the root mean square (RMS) loudness
-int azaRms(float *input, float *output, azaRmsData *data,
-            int frames, int channels);
+int azaRms(float *input, float *output, azaRmsData *data, int frames, int channels);
 
 // Simple distortion to smooth harsh peaking
-int azaCubicLimiter(float *input, float *output,
-            int frames, int channels);
+int azaCubicLimiter(float *input, float *output, int frames, int channels);
 
 /*  gain is in db
     NOTE: This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */

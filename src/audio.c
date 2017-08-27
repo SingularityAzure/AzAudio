@@ -60,7 +60,6 @@ void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data) {
         data->gainBuffer[i] = 0.0f;
         data->valBuffer[i] = 0.0f;
     }
-    data->gain = 0.0f;
 }
 
 void azaLowPassDataInit(azaLowPassData *data) {
@@ -106,24 +105,24 @@ void azaMixDataInit(azaMixData *data) {
     for (int i = 0; i < 2; i++) {
         data->highPassData[i].samplerate = 44100.0f;
         data->highPassData[i].frequency = 40.0f;
-        data->delayData[i].amount = 0.2f;
-        data->delayData[i].feedback = 0.2f;
-        data->reverbData[i].amount = 0.1f;
-        data->reverbData[i].roomsize = 10.0f;
-        data->reverbData[i].color = 0.2f;
+        data->delayData[i].amount = 1.0f;
+        data->delayData[i].feedback = 0.85f;
+        data->reverbData[i].amount = 0.2f;
+        data->reverbData[i].roomsize = 3.0f;
+        data->reverbData[i].color = 0.3f;
         data->compressorData[i].samplerate = 44100.0f;
-        data->compressorData[i].threshold = -18.0f;
-        data->compressorData[i].ratio = 2.0f;
+        data->compressorData[i].threshold = -36.0f;
+        data->compressorData[i].ratio = 4.0f;
         data->compressorData[i].attack = 50.0f;
         data->compressorData[i].decay = 200.0f;
-        data->limiterData[i].gain = 6.0f;
+        data->limiterData[i].gain = 24.0f;
     }
     azaLookaheadLimiterDataInit(&data->limiterData[0]);
     azaLookaheadLimiterDataInit(&data->limiterData[1]);
     azaCompressorDataInit(&data->compressorData[0]);
     azaCompressorDataInit(&data->compressorData[1]);
-    azaDelayDataInit(&data->delayData[0], 40000);
-    azaDelayDataInit(&data->delayData[1], 30000);
+    azaDelayDataInit(&data->delayData[0], 1000);
+    azaDelayDataInit(&data->delayData[1], 1000);
     //int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {225, 556, 441, 341};
     int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116, 2111, 2133, 225, 556, 441, 341, 713};
     int samplesL[AZURE_AUDIO_REVERB_DELAY_COUNT];
@@ -448,19 +447,15 @@ static int azaPortAudioCallback( const void *inputBuffer, void *outputBuffer,
     }
     else
     {
-        for (i=0; i<framesPerBuffer*2; i++)
-        {
-            out[i] = in[i] * 16.0f;
-        }
-        azaError = azaHighPass(out, out, mixData->highPassData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
-        }
-        azaError = azaDelay(out, out, mixData->delayData, framesPerBuffer, 2);
+        azaError = azaDelay((float*)in, out, mixData->delayData, framesPerBuffer, 2);
         if (azaError) {
             return azaError;
         }
         azaError = azaReverb(out, out, mixData->reverbData, framesPerBuffer, 2);
+        if (azaError) {
+            return azaError;
+        }
+        azaError = azaHighPass(out, out, mixData->highPassData, framesPerBuffer, 2);
         if (azaError) {
             return azaError;
         }
@@ -497,7 +492,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
     }
     inputParameters.channelCount = 2;       /* mono input */
     inputParameters.sampleFormat = paFloat32;
-    inputParameters.suggestedLatency = 100.0 / 44100.0;
+    inputParameters.suggestedLatency = 512.0 / 44100.0;
     //inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputParameters.device)->defaultLowInputLatency;
     inputParameters.hostApiSpecificStreamInfo = NULL;
 
@@ -509,7 +504,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
     }
     outputParameters.channelCount = 2;       /* stereo output */
     outputParameters.sampleFormat = paFloat32;
-    outputParameters.suggestedLatency = 100.0 / 44100.0;
+    outputParameters.suggestedLatency = 512.0 / 44100.0;
     //outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = NULL;
 
