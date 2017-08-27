@@ -26,6 +26,10 @@ extern "C" {
     // A pointer was unexpectedly null
 #define AZA_ERROR_PORTAUDIO 2
     // PortAudio has generated an error
+#define AZA_ERROR_INVALID_CHANNEL_COUNT 3
+    // A multi-channel function was passed zero or fewer channels
+#define AZA_ERROR_INVALID_FRAME_COUNT 4
+    // A multi-frame function was passed zero or fewer frames
 
 #define AZURE_AUDIO_RMS_SAMPLES 128
 #define AZURE_AUDIO_LOOKAHEAD_SAMPLES 128
@@ -129,28 +133,30 @@ int azaMicTestStart(azaStream *stream, azaMixData *data);
 int azaMicTestStop(azaStream *stream, azaMixData *data);
 
 // Returns the root mean square (RMS) loudness
-float azaRms(float input, azaRmsData *data);
+int azaRms(float *input, float *output, azaRmsData *data,
+            int frames, int channels);
 
 // Simple distortion to smooth harsh peaking
-float azaCubicLimiter(float input);
+int azaCubicLimiter(float *input, float *output,
+            int frames, int channels);
 
 /*  gain is in db
     NOTE: This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */
-float azaLookaheadLimiter(float input, azaLookaheadLimiterData *data);
+int azaLookaheadLimiter(float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels);
 
 /*  threshold is in db
     ratio is defined as 1/x for positive values
         becomes absolute for negative values (where -1 is the same as infinity)
     attack and decay are in milliseconds        */
-float azaCompressor(float input, azaCompressorData *data);
+int azaCompressor(float *input, float *output, azaCompressorData *data, int frames, int channels);
 
-float azaDelay(float input, azaDelayData *data);
+int azaDelay(float *input, float *output, azaDelayData *data, int frames, int channels);
 
-float azaReverb(float input, azaReverbData *data);
+int azaReverb(float *input, float *output, azaReverbData *data, int frames, int channels);
 
-float azaLowPass(float input, azaLowPassData *data);
+int azaLowPass(float *input, float *output, azaLowPassData *data, int frames, int channels);
 
-float azaHighPass(float input, azaHighPassData *data);
+int azaHighPass(float *input, float *output, azaHighPassData *data, int frames, int channels);
 
 #ifdef __cplusplus
 }

@@ -161,13 +161,19 @@
                             <li>#define AZA_PREPROCESSOR_VALUE</li>
                             <li>#define AZURE_AUDIO_COMPILE_SETTING</li>
                             <li>&nbsp;</li>
-                            <li>azaFooData data;</li>
-                            <li>data.someParameter = someValue;</li>
+                            <li><span class="comment">// Stereo channels</span></li>
+                            <li>azaFooData data[2];</li>
+                            <li>data[0].someParameter = someValue;</li>
+                            <li>data[1].someParameter = someValue;</li>
                             <li><span class="comment">// It's important to set parameters first since memory may be allocated depending on them.</span></li>
-                            <li>azaFooDataInit( &data );</li>
-                            <li>float output;</li>
-                            <li>output = azaFoo( input , &data );</li>
-                            <li>azaFooDataClean( azaFooData &data );</li>
+                            <li>azaFooDataInit( &data[0] );</li>
+                            <li>azaFooDataInit( &data[1] );</li>
+                            <li>float output[bufferSize];</li>
+                            <li><span class="comment">// input is an array of floats the same size as output</span></li>
+                            <li>if (azaFoo( input, output, data, bufferSize, 2 ))</li>
+                            <li><span class="comment">// Error handling</span></li>
+                            <li>azaFooDataClean( &data[0] );</li>
+                            <li>azaFooDataClean( &data[1] );</li>
                             <li></li>
                         </ol>
                     </code>
