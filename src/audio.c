@@ -21,8 +21,25 @@ int azaError;
 
 fpLogCallback azaPrint;
 
+fpMixCallback azaMix;
+void *azaMixData;
+azaDefaultMixData azaDefaultMixFuncData;
+
 int azaInit() {
     azaPrint = azaDefaultLogFunc;
+    azaMix = azaDefaultMixFunc;
+    azaDefaultMixFuncData.channels = 2;
+    if (azaDefaultMixDataInit(&azaDefaultMixFuncData)) {
+        return azaError;
+    }
+    azaMixData = &azaDefaultMixFuncData;
+    azaError = AZA_SUCCESS;
+    return azaError;
+}
+
+int azaClean() {
+    if (azaDefaultMixDataClean(&azaDefaultMixFuncData))
+        return azaError;
     azaError = AZA_SUCCESS;
     return azaError;
 }
@@ -37,13 +54,44 @@ void azaDefaultLogFunc(const char* message) {
     #endif
 }
 
+int azaDefaultMixFunc(const float *input, float *output, unsigned long frames, int channels, void *userData) {
+    azaDefaultMixData *mixData = (azaDefaultMixData*)userData;
+    if (azaDelay(input, output, mixData->delayData, frames, channels)) {
+        return azaError;
+    }
+    if (azaReverb(output, output, mixData->reverbData, frames, channels)) {
+        return azaError;
+    }
+    if (azaHighPass(output, output, mixData->highPassData, frames, channels)) {
+        return azaError;
+    }
+    if (azaCompressor(output, output, mixData->compressorData, frames, channels)) {
+        return azaError;
+    }
+    if (azaLookaheadLimiter(output, output, mixData->limiterData, frames, channels)) {
+        return azaError;
+    }
+    azaError = AZA_SUCCESS;
+    return azaError;
+}
+
 int azaSetLogCallback(fpLogCallback newLogFunc) {
     if (newLogFunc != NULL) {
         azaPrint = newLogFunc;
-        azaError = AZA_SUCCESS;
     } else {
-        azaError = AZA_ERROR_NULL_POINTER;
+        azaPrint = azaDefaultLogFunc;
     }
+    azaError = AZA_SUCCESS;
+    return azaError;
+}
+
+int azaSetMixCallback(fpMixCallback newMixFunc) {
+    if (newMixFunc != NULL) {
+        azaMix = newMixFunc;
+    } else {
+        azaMix = azaDefaultMixFunc;
+    }
+    azaError = AZA_SUCCESS;
     return azaError;
 }
 
@@ -75,22 +123,23 @@ void azaCompressorDataInit(azaCompressorData *data) {
     data->attenuation = 0.0f;
 }
 
-void azaDelayDataInit(azaDelayData *data, int samples) {
-    data->buffer = (float*)malloc(sizeof(float) * samples);
-    for (int i = 0; i < samples; i++) {
+void azaDelayDataInit(azaDelayData *data) {
+    data->buffer = (float*)malloc(sizeof(float) * data->samples);
+    for (int i = 0; i < data->samples; i++) {
         data->buffer[i] = 0.0f;
     }
     data->index = 0;
-    data->samples = samples;
 }
 
 void azaDelayDataClean(azaDelayData *data) {
     free(data->buffer);
 }
 
-void azaReverbDataInit(azaReverbData *data, int samples[AZURE_AUDIO_REVERB_DELAY_COUNT]) {
+void azaReverbDataInit(azaReverbData *data) {
+    int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116, 2111, 2133, 225, 556, 441, 341, 713};
     for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
-        azaDelayDataInit(&data->delay[i], samples[i]);
+        data->delay[i].samples = samples[i] + data->samplesOffset;
+        azaDelayDataInit(&data->delay[i]);
         azaLowPassDataInit(&data->lowPass[i]);
     }
 }
@@ -101,50 +150,72 @@ void azaReverbDataClean(azaReverbData *data) {
     }
 }
 
-void azaMixDataInit(azaMixData *data) {
-    for (int i = 0; i < 2; i++) {
-        data->highPassData[i].samplerate = 44100.0f;
-        data->highPassData[i].frequency = 40.0f;
+int azaDefaultMixDataInit(azaDefaultMixData *data) {
+    if (data->channels < 1) {
+        azaError = AZA_ERROR_INVALID_CHANNEL_COUNT;
+        data->delayData = NULL;
+        data->reverbData = NULL;
+        data->highPassData = NULL;
+        data->compressorData = NULL;
+        data->limiterData = NULL;
+        return azaError;
+    }
+    data->delayData = (azaDelayData*)malloc(sizeof(azaDelayData) * data->channels);
+    data->reverbData = (azaReverbData*)malloc(sizeof(azaReverbData) * data->channels);
+    data->highPassData = (azaHighPassData*)malloc(sizeof(azaHighPassData) * data->channels);
+    data->compressorData = (azaCompressorData*)malloc(sizeof(azaCompressorData) * data->channels);
+    data->limiterData = (azaLookaheadLimiterData*)malloc(sizeof(azaLookaheadLimiterData) * data->channels);
+    for (int i = 0; i < data->channels; i++) {
         data->delayData[i].amount = 1.0f;
         data->delayData[i].feedback = 0.85f;
+        data->delayData[i].samples = 1000;
+        azaDelayDataInit(&data->delayData[i]);
+
         data->reverbData[i].amount = 0.2f;
         data->reverbData[i].roomsize = 3.0f;
         data->reverbData[i].color = 0.3f;
+        data->reverbData[i].samplesOffset = (i-1) * 23;
+        azaReverbDataInit(&data->reverbData[i]);
+
+        data->highPassData[i].samplerate = 44100.0f;
+        data->highPassData[i].frequency = 40.0f;
+        azaHighPassDataInit(&data->highPassData[i]);
+
         data->compressorData[i].samplerate = 44100.0f;
         data->compressorData[i].threshold = -36.0f;
         data->compressorData[i].ratio = 4.0f;
         data->compressorData[i].attack = 50.0f;
         data->compressorData[i].decay = 200.0f;
+        azaCompressorDataInit(&data->compressorData[i]);
+
         data->limiterData[i].gain = 24.0f;
+        azaLookaheadLimiterDataInit(&data->limiterData[i]);
     }
-    azaLookaheadLimiterDataInit(&data->limiterData[0]);
-    azaLookaheadLimiterDataInit(&data->limiterData[1]);
-    azaCompressorDataInit(&data->compressorData[0]);
-    azaCompressorDataInit(&data->compressorData[1]);
-    azaDelayDataInit(&data->delayData[0], 1000);
-    azaDelayDataInit(&data->delayData[1], 1000);
-    //int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {225, 556, 441, 341};
-    int samples[AZURE_AUDIO_REVERB_DELAY_COUNT] = {1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116, 2111, 2133, 225, 556, 441, 341, 713};
-    int samplesL[AZURE_AUDIO_REVERB_DELAY_COUNT];
-    int samplesR[AZURE_AUDIO_REVERB_DELAY_COUNT];
-    for (int i = 0; i < AZURE_AUDIO_REVERB_DELAY_COUNT; i++) {
-        samplesL[i] = samples[i];
-        samplesR[i] = samples[i] + 23;
-    }
-    azaReverbDataInit(&data->reverbData[0], samplesL);
-    azaReverbDataInit(&data->reverbData[1], samplesR);
-    azaHighPassDataInit(&data->highPassData[0]);
-    azaHighPassDataInit(&data->highPassData[1]);
+    azaError = AZA_SUCCESS;
+    return azaError;
 }
 
-void azaMixDataClean(azaMixData *data) {
-    azaDelayDataClean(&data->delayData[0]);
-    azaDelayDataClean(&data->delayData[1]);
-    azaReverbDataClean(&data->reverbData[0]);
-    azaReverbDataClean(&data->reverbData[1]);
+int azaDefaultMixDataClean(azaDefaultMixData *data) {
+    if (data->channels < 1) {
+        azaError = AZA_ERROR_INVALID_CHANNEL_COUNT;
+        return azaError;
+    }
+    if (data->delayData != NULL && data->reverbData != NULL && data->highPassData != NULL && data->compressorData != NULL && data->limiterData != NULL) {
+        for (int i = 0; i < data->channels; i++) {
+            azaDelayDataClean(&data->delayData[i]);
+            azaReverbDataClean(&data->reverbData[i]);
+        }
+        free(data->delayData);
+        free(data->reverbData);
+        free(data->highPassData);
+        free(data->compressorData);
+        free(data->limiterData);
+    }
+    azaError = AZA_SUCCESS;
+    return azaError;
 }
 
-int azaCubicLimiter(float *input, float *output, int frames, int channels) {
+int azaCubicLimiter(const float *input, float *output, int frames, int channels) {
     if (input == NULL || output == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -170,7 +241,7 @@ int azaCubicLimiter(float *input, float *output, int frames, int channels) {
     return azaError;
 }
 
-int azaRms(float *input, float *output, azaRmsData *data, int frames, int channels) {
+int azaRms(const float *input, float *output, azaRmsData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -198,7 +269,7 @@ int azaRms(float *input, float *output, azaRmsData *data, int frames, int channe
     return azaError;
 }
 
-int azaLookaheadLimiter(float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels) {
+int azaLookaheadLimiter(const float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -248,7 +319,7 @@ int azaLookaheadLimiter(float *input, float *output, azaLookaheadLimiterData *da
     return azaError;
 }
 
-int azaLowPass(float *input, float *output, azaLowPassData *data, int frames, int channels) {
+int azaLowPass(const float *input, float *output, azaLowPassData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -273,7 +344,7 @@ int azaLowPass(float *input, float *output, azaLowPassData *data, int frames, in
     return azaError;
 }
 
-int azaHighPass(float *input, float *output, azaHighPassData *data, int frames, int channels) {
+int azaHighPass(const float *input, float *output, azaHighPassData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -298,7 +369,7 @@ int azaHighPass(float *input, float *output, azaHighPassData *data, int frames, 
     return azaError;
 }
 
-int azaCompressor(float *input, float *output, azaCompressorData *data, int frames, int channels) {
+int azaCompressor(const float *input, float *output, azaCompressorData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -343,7 +414,7 @@ int azaCompressor(float *input, float *output, azaCompressorData *data, int fram
     return azaError;
 }
 
-int azaDelay(float *input, float *output, azaDelayData *data, int frames, int channels) {
+int azaDelay(const float *input, float *output, azaDelayData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -371,7 +442,7 @@ int azaDelay(float *input, float *output, azaDelayData *data, int frames, int ch
     return azaError;
 }
 
-int azaReverb(float *input, float *output, azaReverbData *data, int frames, int channels) {
+int azaReverb(const float *input, float *output, azaReverbData *data, int frames, int channels) {
     if (input == NULL || output == NULL || data == NULL) {
         azaError = AZA_ERROR_NULL_POINTER;
         return azaError;
@@ -434,7 +505,6 @@ static int azaPortAudioCallback( const void *inputBuffer, void *outputBuffer,
     unsigned int i;
     (void) timeInfo; /* Prevent unused variable warnings. */
     (void) statusFlags;
-    azaMixData *mixData = (azaMixData*)userData;
 
     if (inputBuffer == NULL)
     {
@@ -447,31 +517,15 @@ static int azaPortAudioCallback( const void *inputBuffer, void *outputBuffer,
     }
     else
     {
-        azaError = azaDelay((float*)in, out, mixData->delayData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
-        }
-        azaError = azaReverb(out, out, mixData->reverbData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
-        }
-        azaError = azaHighPass(out, out, mixData->highPassData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
-        }
-        azaError = azaCompressor(out, out, mixData->compressorData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
-        }
-        azaError = azaLookaheadLimiter(out, out, mixData->limiterData, framesPerBuffer, 2);
-        if (azaError) {
-            return azaError;
+        if (azaMix(in, out, framesPerBuffer, 2, userData)) {
+            azaPrint("Error in mix function");
+            return paComplete;
         }
     }
     return paContinue;
 }
 
-int azaMicTestStart(azaStream *stream, azaMixData *data) {
+int azaMicTestStart(azaStream *stream) {
     PaStreamParameters inputParameters, outputParameters;
     PaError err;
 
@@ -490,7 +544,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
         azaError = AZA_ERROR_PORTAUDIO;
         return azaError;
     }
-    inputParameters.channelCount = 2;       /* mono input */
+    inputParameters.channelCount = 2;
     inputParameters.sampleFormat = paFloat32;
     inputParameters.suggestedLatency = 512.0 / 44100.0;
     //inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputParameters.device)->defaultLowInputLatency;
@@ -516,7 +570,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
             64,
             0, /* paClipOff, */  /* we won't output out of range samples so don't bother clipping them */
             azaPortAudioCallback,
-            (void*)data);
+            azaMixData);
     if (err != paNoError) {
         azaPrint("Error: Failed to open PortAudio stream");
         azaError = AZA_ERROR_PORTAUDIO;
@@ -536,7 +590,7 @@ int azaMicTestStart(azaStream *stream, azaMixData *data) {
     return azaError;
 }
 
-int azaMicTestStop(azaStream *stream, azaMixData *data) {
+int azaMicTestStop(azaStream *stream) {
     PaError err;
     if (stream == NULL) {
         azaPrint("Error: stream is null");

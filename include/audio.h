@@ -34,9 +34,35 @@ extern "C" {
 #define AZURE_AUDIO_RMS_SAMPLES 128
 #define AZURE_AUDIO_LOOKAHEAD_SAMPLES 128
 
+// Setup / Errors
+
 int azaInit();
 
+int azaClean();
+
 int azaGetError();
+
+void azaDefaultLogFunc(const char* message);
+
+// We use a callback function for all message logging.
+// This allows the user to define their own logging output functions
+typedef void (*fpLogCallback)(const char* message);
+
+int azaSetLogCallback(fpLogCallback newLogFunc);
+
+extern fpLogCallback azaPrint;
+
+int azaDefaultMixFunc(const float *input, float *output, unsigned long frames, int channels, void *userData);
+
+// Allows custom mixing functions
+// NOTE: User must provide data structs for every effect used
+typedef int (*fpMixCallback)(const float *input, float *output, unsigned long frames, int channels, void *userData);
+
+int azaSetMixCallback(fpMixCallback newMixFunc);
+
+extern fpMixCallback azaMix;
+
+//  Data structures
 
 typedef struct {
     float squared;
@@ -82,12 +108,12 @@ void azaCompressorDataInit(azaCompressorData *data);
 typedef struct {
     float *buffer; // Must be dynamically-allocated to allow different time spans
     int index;
-    int samples;
     // Static parameters
     float feedback;
     float amount;
+    int samples;
 } azaDelayData;
-void azaDelayDataInit(azaDelayData *data, int samples); // length in samples of the buffer
+void azaDelayDataInit(azaDelayData *data);
 void azaDelayDataClean(azaDelayData *data);
 
 #define AZURE_AUDIO_REVERB_DELAY_COUNT 15
@@ -99,62 +125,56 @@ typedef struct {
     float amount;
     float roomsize;
     float color;
+    int samplesOffset;
 } azaReverbData;
-void azaReverbDataInit(azaReverbData *data, int samples[AZURE_AUDIO_REVERB_DELAY_COUNT]);
+void azaReverbDataInit(azaReverbData *data);
 void azaReverbDataClean(azaReverbData *data);
-
-void azaDefaultLogFunc(const char* message);
-
-// We use a callback function for all message logging.
-// This allows the user to define their own logging output functions
-typedef void (*fpLogCallback)(const char* message);
-
-// void newLogFunc(const char* message);
-int azaSetLogCallback(fpLogCallback newLogFunc);
-
-extern fpLogCallback azaPrint;
 
 typedef struct {
     void *stream;
 } azaStream;
 
 typedef struct {
-    azaLookaheadLimiterData limiterData[2];
-    azaCompressorData compressorData[2];
-    azaDelayData delayData[2];
-    azaReverbData reverbData[2];
-    azaHighPassData highPassData[2];
-} azaMixData;
-void azaMixDataInit(azaMixData *data);
-void azaMixDataClean(azaMixData *data);
+    azaDelayData *delayData;
+    azaReverbData *reverbData;
+    azaHighPassData *highPassData;
+    azaCompressorData *compressorData;
+    azaLookaheadLimiterData *limiterData;
+    // Static parameters
+    int channels;
+} azaDefaultMixData;
+int azaDefaultMixDataInit(azaDefaultMixData *data);
+int azaDefaultMixDataClean(azaDefaultMixData *data);
 
-int azaMicTestStart(azaStream *stream, azaMixData *data);
+// Core functionality
 
-int azaMicTestStop(azaStream *stream, azaMixData *data);
+int azaMicTestStart(azaStream *stream);
+
+int azaMicTestStop(azaStream *stream);
 
 // Returns the root mean square (RMS) loudness
-int azaRms(float *input, float *output, azaRmsData *data, int frames, int channels);
+int azaRms(const float *input, float *output, azaRmsData *data, int frames, int channels);
 
 // Simple distortion to smooth harsh peaking
-int azaCubicLimiter(float *input, float *output, int frames, int channels);
+int azaCubicLimiter(const float *input, float *output, int frames, int channels);
 
 /*  gain is in db
     NOTE: This limiter increases latency by AZURE_AUDIO_LOOKAHEAD_SAMPLES samples     */
-int azaLookaheadLimiter(float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels);
+int azaLookaheadLimiter(const float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels);
 
 /*  threshold is in db
     ratio is defined as 1/x for positive values
         becomes absolute for negative values (where -1 is the same as infinity)
     attack and decay are in milliseconds        */
-int azaCompressor(float *input, float *output, azaCompressorData *data, int frames, int channels);
+int azaCompressor(const float *input, float *output, azaCompressorData *data, int frames, int channels);
 
-int azaDelay(float *input, float *output, azaDelayData *data, int frames, int channels);
+int azaDelay(const float *input, float *output, azaDelayData *data, int frames, int channels);
 
-int azaReverb(float *input, float *output, azaReverbData *data, int frames, int channels);
+int azaReverb(const float *input, float *output, azaReverbData *data, int frames, int channels);
 
-int azaLowPass(float *input, float *output, azaLowPassData *data, int frames, int channels);
+int azaLowPass(const float *input, float *output, azaLowPassData *data, int frames, int channels);
 
-int azaHighPass(float *input, float *output, azaHighPassData *data, int frames, int channels);
+int azaHighPass(const float *input, float *output, azaHighPassData *data, int frames, int channels);
 
 #ifdef __cplusplus
 }
