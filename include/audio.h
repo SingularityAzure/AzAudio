@@ -135,8 +135,6 @@ typedef struct {
 } azaStream;
 
 typedef struct {
-    azaDelayData *delayData;
-    azaReverbData *reverbData;
     azaHighPassData *highPassData;
     azaCompressorData *compressorData;
     azaLookaheadLimiterData *limiterData;
