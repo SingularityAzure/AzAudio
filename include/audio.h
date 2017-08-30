@@ -65,6 +65,15 @@ extern fpMixCallback azaMix;
 //  Data structures
 
 typedef struct {
+    float *samples;
+    // Static paramaters
+    int channels;
+    int frames;
+} azaBuffer;
+int azaBufferInit(azaBuffer *data);
+int azaBufferClean(azaBuffer *data);
+
+typedef struct {
     float squared;
     float buffer[AZURE_AUDIO_RMS_SAMPLES];
     int index;

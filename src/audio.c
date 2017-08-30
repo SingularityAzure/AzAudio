@@ -89,6 +89,32 @@ int azaSetMixCallback(fpMixCallback newMixFunc) {
     return azaError;
 }
 
+int azaBufferInit(azaBuffer *data) {
+    if (data->channels < 1) {
+        azaError = AZA_ERROR_INVALID_CHANNEL_COUNT;
+        data->samples = NULL;
+        return azaError;
+    }
+    if (data->frames < 1) {
+        azaError = AZA_ERROR_INVALID_FRAME_COUNT;
+        data->samples = NULL;
+        return azaError;
+    }
+    data->samples = (float*)malloc(sizeof(float) * data->frames * data->channels);
+    azaError = AZA_SUCCESS;
+    return azaError;
+}
+
+int azaBufferClean(azaBuffer *data) {
+    if (data->samples != NULL) {
+        free(data->samples);
+        azaError = AZA_SUCCESS;
+        return azaError;
+    }
+    azaError = AZA_ERROR_NULL_POINTER;
+    return azaError;
+}
+
 void azaRmsDataInit(azaRmsData *data) {
     data->squared = 0.0f;
     for (int i = 0; i < AZURE_AUDIO_RMS_SAMPLES; i++) {
@@ -157,11 +183,11 @@ int azaDefaultMixDataInit(azaDefaultMixData *data) {
     data->limiterData = (azaLookaheadLimiterData*)malloc(sizeof(azaLookaheadLimiterData) * data->channels);
     for (int i = 0; i < data->channels; i++) {
         data->highPassData[i].samplerate = 44100.0f;
-        data->highPassData[i].frequency = 40.0f;
+        data->highPassData[i].frequency = 20.0f;
         azaHighPassDataInit(&data->highPassData[i]);
 
         data->compressorData[i].samplerate = 44100.0f;
-        data->compressorData[i].threshold = -36.0f;
+        data->compressorData[i].threshold = -18.0f;
         data->compressorData[i].ratio = 4.0f;
         data->compressorData[i].attack = 50.0f;
         data->compressorData[i].decay = 200.0f;
@@ -334,7 +360,7 @@ int azaHighPass(const float *input, float *output, azaHighPassData *data, int fr
     for (int i = 0; i < frames*channels; i++) {
         azaHighPassData *datum = &data[i % channels];
 
-        float amount = expf(-1.0f * (datum->frequency / datum->samplerate));
+        float amount = expf(-8.0f * (datum->frequency / datum->samplerate));
         datum->output = input[i] + amount * (datum->output - input[i]);
         output[i] = input[i] - datum->output;
     }
