@@ -12,6 +12,7 @@
 #ifdef __unix
 #include <csignal>
 #include <cstdlib>
+#include <cmath>
 #include <execinfo.h>
 #include <unistd.h>
 

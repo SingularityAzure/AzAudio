@@ -33,6 +33,9 @@ extern "C" {
 
 #define AZURE_AUDIO_RMS_SAMPLES 128
 #define AZURE_AUDIO_LOOKAHEAD_SAMPLES 128
+#define AZURE_AUDIO_SAMPLER_TRANSITION_FRAMES 128
+    // The duration of transitions between the variable parameter values
+#define AZURE_AUDIO_FRAMES_PER_BUFFER 64
 
 // Setup / Errors
 
@@ -67,7 +70,6 @@ extern fpMixCallback azaMix;
 typedef struct {
     float *samples;
     // Static paramaters
-    int channels;
     int frames;
 } azaBuffer;
 int azaBufferInit(azaBuffer *data);
@@ -140,10 +142,24 @@ void azaReverbDataInit(azaReverbData *data);
 void azaReverbDataClean(azaReverbData *data);
 
 typedef struct {
+    float frame;
+    float s; // Smooth speed
+    float g; // Smooth gain
+    // Static parameters
+    azaBuffer *buffer;
+    // Variable parameters
+    float speed;
+    float gain;
+} azaSamplerData;
+int azaSamplerDataInit(azaSamplerData *data);
+
+typedef struct {
     void *stream;
 } azaStream;
 
 typedef struct {
+    azaBuffer buffer;
+    azaSamplerData *samplerData;
     azaHighPassData *highPassData;
     azaCompressorData *compressorData;
     azaLookaheadLimiterData *limiterData;
@@ -182,6 +198,8 @@ int azaReverb(const float *input, float *output, azaReverbData *data, int frames
 int azaLowPass(const float *input, float *output, azaLowPassData *data, int frames, int channels);
 
 int azaHighPass(const float *input, float *output, azaHighPassData *data, int frames, int channels);
+
+int azaSampler(const float *input, float *output, azaSamplerData *data, int frames, int channels);
 
 #ifdef __cplusplus
 }
