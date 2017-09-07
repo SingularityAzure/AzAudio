@@ -22,17 +22,25 @@
 float sinc(float x) {
     if (x == 0)
         return 1.0f;
+    if (x > 1.0f || x < -1.0f)
+        return 0.0f;
     float temp = x * 3.1415926535;
     return sinf(temp) / temp;
 }
 
+float cosc(float x) {
+    if (x < -1.0 || x > 1.0)
+        return 0.0;
+    return cosf(x * 3.1415926535) * 0.5 + 0.5;
+}
+
 float linc(float x) {
     if (x > 1.0f || x < -1.0f)
-        return 0.0f;
+    return 0.0f;
     if (x > 0)
         return 1.0f - x;
     else
-        return 1.0 + x;
+        return 1.0f + x;
 }
 
 int azaError;
@@ -68,13 +76,11 @@ void azaDefaultLogFunc(const char* message) {
 
 int azaDefaultMixFunc(const float *input, float *output, unsigned long frames, int channels, void *userData) {
     azaDefaultMixData *mixData = (azaDefaultMixData*)userData;
-    if (rand()%500 == 0) {
-        float newSpeed = (float)(rand()%10000);
-        newSpeed = sqrtf(newSpeed) / 100.0f;
+    //if (rand()%200 == 0) {
         for (int i = 0; i < channels; i++) {
-            mixData->samplerData[i].speed = newSpeed;
+            mixData->samplerData[i].speed += 0.001;
         }
-    }
+    //}
     if (azaSampler(input, output, mixData->samplerData, frames, channels)) {
         return azaError;
     }
@@ -212,7 +218,6 @@ int azaDefaultMixDataInit(azaDefaultMixData *data) {
     azaBufferInit(&data->buffer);
     for (int i = 0; i < 1000; i++) {
         data->buffer.samples[i] = sinf(((float)i) * 3.1415926535 / 100.0f);
-        data->buffer.samples[i] *= data->buffer.samples[i];
     }
     data->samplerData = (azaSamplerData*)malloc(sizeof(azaSamplerData) * data->channels);
     data->highPassData = (azaHighPassData*)malloc(sizeof(azaHighPassData) * data->channels);
@@ -553,19 +558,16 @@ int azaSampler(const float *input, float *output, azaSamplerData *data, int fram
         datum->g = datum->gain + expf(-1.0f / (AZURE_AUDIO_SAMPLER_TRANSITION_FRAMES)) * (datum->g - datum->gain);
 
         float t = datum->frame + datum->s;
+        float fract;
+        fract = sinc(datum->frame - (float)((int)datum->frame));
         float sample = 0.0f;
         // Oversampling?
-        float count = 1.0f;
-        for (float i = datum->frame + 1.0f; i <= t; i += 1.0f) {
-            int frame = (int)i;
+        float count = 0.0f;
+        for (int i = (int)datum->frame; i <= (int)t; i++) {
+            sample += datum->buffer->samples[i % datum->buffer->frames] * fract;
+            sample += datum->buffer->samples[(i+1) % datum->buffer->frames] * (1.0-fract);
             count += 1.0f;
-            sample += datum->buffer->samples[frame % datum->buffer->frames];
         }
-        int frame1, frame2;
-        frame1 = (int)(datum->frame);
-        frame2 = (int)t+1;
-        sample += datum->buffer->samples[frame1 % datum->buffer->frames] * sinc((datum->frame - (float)frame1)/(datum->s + 1.0f));
-        sample += datum->buffer->samples[frame2 % datum->buffer->frames] * sinc((datum->frame - (float)frame2)/(datum->s + 1.0f));
         sample /= count;
         output[i] = input[i] + sample * datum->g;
         datum->frame = t;
