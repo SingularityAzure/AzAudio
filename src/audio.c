@@ -217,7 +217,7 @@ int azaDefaultMixDataInit(azaDefaultMixData *data) {
     data->buffer.frames = 1000;
     azaBufferInit(&data->buffer);
     for (int i = 0; i < 1000; i++) {
-        data->buffer.samples[i] = sinf(((float)i) * 3.1415926535 / 100.0f);
+        data->buffer.samples[i] = sinf(((float)i) * 3.1415926535 / 50.0f);
     }
     data->samplerData = (azaSamplerData*)malloc(sizeof(azaSamplerData) * data->channels);
     data->highPassData = (azaHighPassData*)malloc(sizeof(azaHighPassData) * data->channels);
@@ -240,7 +240,7 @@ int azaDefaultMixDataInit(azaDefaultMixData *data) {
         data->compressorData[i].decay = 200.0f;
         azaCompressorDataInit(&data->compressorData[i]);
 
-        data->limiterData[i].gain = 24.0f;
+        data->limiterData[i].gain = 12.0f;
         azaLookaheadLimiterDataInit(&data->limiterData[i]);
     }
     azaError = AZA_SUCCESS;
@@ -557,20 +557,20 @@ int azaSampler(const float *input, float *output, azaSamplerData *data, int fram
         datum->s = datum->speed + expf(-1.0f / (AZURE_AUDIO_SAMPLER_TRANSITION_FRAMES)) * (datum->s - datum->speed);
         datum->g = datum->gain + expf(-1.0f / (AZURE_AUDIO_SAMPLER_TRANSITION_FRAMES)) * (datum->g - datum->gain);
 
-        float t = datum->frame + datum->s;
+        int t = (int)datum->frame + (int)datum->s;
         float fract;
-        fract = sinc(datum->frame - (float)((int)datum->frame));
+        fract = linc(datum->frame - (float)((int)datum->frame));
         float sample = 0.0f;
         // Oversampling?
         float count = 0.0f;
-        for (int i = (int)datum->frame; i <= (int)t; i++) {
+        for (int i = (int)datum->frame; i <= t; i++) {
             sample += datum->buffer->samples[i % datum->buffer->frames] * fract;
             sample += datum->buffer->samples[(i+1) % datum->buffer->frames] * (1.0-fract);
             count += 1.0f;
         }
         sample /= count;
         output[i] = input[i] + sample * datum->g;
-        datum->frame = t;
+        datum->frame = datum->frame + datum->s;
         if ((int)datum->frame > datum->buffer->frames) {
             datum->frame -= (float)datum->buffer->frames;
         }
