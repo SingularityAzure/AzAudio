@@ -32,10 +32,15 @@ extern "C" {
     // A multi-frame function was passed zero or fewer frames
 
 #define AZURE_AUDIO_RMS_SAMPLES 128
-#define AZURE_AUDIO_LOOKAHEAD_SAMPLES 128
+#define AZURE_AUDIO_LOOKAHEAD_SAMPLES 32
 #define AZURE_AUDIO_SAMPLER_TRANSITION_FRAMES 128
     // The duration of transitions between the variable parameter values
-#define AZURE_AUDIO_FRAMES_PER_BUFFER 64
+#define AZURE_AUDIO_FRAMES_PER_BUFFER 128
+
+// What we use to buffer sound data for the callback function to consume or write to
+//extern float *inputBuffer, *outputBuffer;
+//extern int inputBufferSize, outputBufferSize;
+//extern int inputLocation, outputLocation; // Location in ring buffers
 
 // Setup / Errors
 
@@ -161,6 +166,7 @@ typedef struct {
     azaBuffer buffer;
     azaSamplerData *samplerData;
     azaHighPassData *highPassData;
+    azaReverbData *reverbData;
     azaCompressorData *compressorData;
     azaLookaheadLimiterData *limiterData;
     // Static parameters
