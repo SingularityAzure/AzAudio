@@ -1,10 +1,10 @@
-IDIR=include
+IDIR=src
 CC=g++
 CC_C=gcc
 WCC=i686-w64-mingw32-g++
 WCC_C=i686-w64-mingw32-gcc
-CFLAGS=-I$(IDIR) -Wall -std=c++11
-CFLAGS_C=-I$(IDIR) -Wall
+CFLAGS=-I$(IDIR) -Wall -fmax-errors=1 -std=c++11
+CFLAGS_C=-I$(IDIR) -Wall -fmax-errors=1 `pkg-config --cflags libpipewire-0.3`
 WCFLAGS=-D_GLIBCXX_USE_NANOSLEEP -static-libgcc -static-libstdc++ -static -lpthread
 WCFLAGS_C=-static-libgcc
 
@@ -13,8 +13,8 @@ SDIR=src
 ODIR=obj
 LDIR=lib
 
-LIBS_L=-lpthread -lportaudio
-LIBS_W=-lportaudio -lwinmm
+LIBS_L=-lpthread `pkg-config --libs libpipewire-0.3`
+LIBS_W=-lwinmm
 
 _DEPS = log.hpp
 _DEPS_C = audio.h

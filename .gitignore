@@ -2,6 +2,7 @@
 *.[oa]
 # ignore Atom's symbols files
 *.gch
+*.log
 
 # don't include generated binaries
 bin/

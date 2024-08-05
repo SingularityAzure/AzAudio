@@ -1,312 +1,278 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <link href="https://fonts.googleapis.com/css?family=Nunito|Source+Code+Pro|Signika" rel="stylesheet">
-        <link type="text/css" href="css/docs.css" media="all" rel="stylesheet">
-        <script>
-            function parallax() {
-                var $slider = document.getElementById("background");
+	<head>
+		<link href="https://fonts.googleapis.com/css?family=Nunito|Source+Code+Pro|Signika" rel="stylesheet">
+		<link type="text/css" href="css/docs.css" media="all" rel="stylesheet">
+<!--
+		<script>
+			function parallax() {
+				var $slider = document.getElementById("background");
 
-                var yPos = window.pageYOffset / 2.0;
-                yPos = yPos;
+				var yPos = window.pageYOffset / 2.0;
+				yPos = yPos;
 
-                var coords = '50% '+ yPos + 'px';
+				var coords = '50% '+ yPos + 'px';
 
-                $slider.style.backgroundPosition = coords;
-            }
+				$slider.style.backgroundPosition = coords;
+			}
 
-            window.addEventListener("scroll", function(){
-                parallax();
-            });
-        </script>
-    </head>
-    <body>
-        <div id="background">
-            <header class="title">
-                <div class="titleWrapper">
-                    <div class="titleCentered">
-                        <h1>Azure Audio</h1>
-                        <h3>Reference Guide</h3>
-                    </div>
-                </div>
-            </header>
-            <section id="abouttheguide">
-                <div class="narrow">
-                    <h3>About The Guide</h3>
-                    <p>
-                        This guide is meant to be a simple and informative guide to using the latest version of the library. As of this writing, the library is in an early stage of development and many things are subject to change. I will do my best to keep this guide up-to-date and accurate but I cannot guarantee at this time that it will always be representative of the latest version. In the future, this will not be an issue, since most things will not change that much, if at all.
-                    </p>
-                    <p>
-                        If you notice anything out-of-date feel free to send me an email detailing which part needs updating, and I'll get to it as soon as I can.
-                    </p>
-                    <h6>Notice:</h6>
-                    <p>
-                        This documentation is not complete.
-                    </p>
-                </div>
-            </section>
-            <section id="contents">
-                <div class="narrow">
-                    <h3>Contents</h3>
-                    <h5><a href=#introduction>Introduction</a></h5>
-                    <ul>
-                        <li>
-                            <a href=#theproject>The Project</a>
-                        </li>
-                        <li>
-                            <a href=#theauthor>The Author</a>
-                        </li>
-                        <li>
-                            <a href=#namingconventions>Naming Conventions</a>
-                        </li>
-                        <li>
-                            <a href=#errorhandling>Error Handling</a>
-                        </li>
-                    </ul>
-                    <h5><a href=#reference>Reference</a></h5>
-                    <ul>
-                        <li>
-                            <a href=#azaInit>azaInit()</a>
-                        </li>
-                        <li>
-                            <a href=#azaGetError>azaGetError()</a>
-                        </li>
-                        <li>
-                            <a href=#errorcodes>Error Codes</a>
-                        </li>
-                    </ul>
-                    <h5><a href=#usage>Usage</a></h5>
-                    <ul>
-                        <li>
-                            <a href=#source>Source</a>
-                        </li>
-                        <li>
-                            <a href=#dependencies>Dependencies</a>
-                        </li>
-                        <li>
-                            <a href=#copyright>Copyright</a>
-                        </li>
-                        <li>
-                            <a href=#license>License</a>
-                        </li>
-                    </ul>
-                </div>
-            </section>
-            <header id="introduction">
-                <div class="titleWrapper">
-                    <div class="titleCentered">
-                        <h2>Introduction</h2>
-                    </div>
-                </div>
-            </header>
-            <section id="theproject">
-                <div class="narrow">
-                    <h3>The Project</h3>
-                    <p>
-                        Azure Audio is a cross-platform audio library for games being written in C with the mission to bring powerful, feature-full 3D audio to developers of various backgrounds in audio. It is meant to be a simple, extensible, easy-to-use API that you can include in your projects for commercial or non-commercial use. You are encouraged to write your own modifications for any new features you may desire, or you may request a feature by contacting me. I do ask that, should you make any modifications (improvements, additions, etc.), that you consider sending them to me so I can add them to the core library, but you are in no way required to do so. The only condition to using this library is attribution to the original author, as detailed in the <a href=#license>license</a>.
-                    </p>
-                    <p>
-                        On top of this will be a C++ wrapper library that will act as a high-level abstraction library designed to make use of the library as clean and easy as possible while maintaining control over how it works. With this, many default settings will be provided to make practical use very simple, while still allowing lower-level access whenever necessary or desired.
-                    </p>
-                </div>
-            </section>
-            <section id="theauthor">
-                <div class="narrow">
-                    <h3>The Author</h3>
-                    <p>
-                        I'm Philip, an enthusiast programmer with experience in a number of technical fields, including sound engineering - Particularly music production from start to finish. Coupled with this experience is my insatiable appetite for learning new things, which is part of why I started this project in the first place.
-                    </p>
-                    <p>
-                        I used to go by a large number of names online (still do to a degree), but more recently I've been settling in to using the pseudonym <i>Azure</i> for all my profiles. Alternatively, for most programming projects I've been using <i>Singularity</i>, hence <i>SingularityAzure</i>. Though solely for the sake of alliteration, I had to go with <i>Azure Audio</i> for this project's name.
-                    </p>
-                    <p>
-                        I'm always open to feedback and am more than happy to answer any questions you may have. Should you have an inquiry, you can contact me via email at:<br/>
-                    </p>
-                    <p class="indent">
-                        <a href="mail:singularity.haynes@gmail.com">singularity.haynes@gmail.com</a>
-                    </p>
-                </div>
-            </section>
-            <section id="namingconventions">
-                <div class="narrow">
-                    <h3>Naming Conventions</h3>
-                    <p>
-                        Based on my experience and personal preferences, I've chosen these naming conventions because they are distinct for each type of name they represent, which not only helps avoid conflicts, but also provides a way to identify what something is without looking it up or tagging it with an identifier. They are meant to be a good balance between clarity, and brevity.</p>
-                    <h6>Preprocessor Macros</h6>
-                    <p>
-                        ALL_CAPS_WITH_UNDERSCORES<br/>
-                        Prefixed with <i>AZA_</i> for the vast majority. The prefix <i>AZURE_AUDIO_</i> is used exclusively for parameters the user may wish to change for compilation, and affect the build process.</p>
-                    <h6>Functions</h6>
-                    <p>
-                        azaCapitalizeEveryWordWithoutSpaces<br/>
-                        Always prefixed with <i>aza</i>.
-                    </p>
-                    <h6>Data Structures Repeatedly Passed to Functions</h6>
-                    <p>
-                        aza&lt;FunctionName&gt;Data<br/>
+			window.addEventListener("scroll", function(){
+				parallax();
+			});
+		</script>
+-->
+	</head>
+	<body>
+		<div id="background">
+			<header class="title">
+				<div class="titleWrapper">
+					<h1>AzAudio</h1>
+					<h3>Reference Guide</h3>
+				</div>
+			</header>
+			<section id="abouttheguide">
+				<div class="narrow">
+					<h3>About The Guide</h3>
+					<p>
+						As of this writing, the library is in an early stage of development and many things are subject to change. I will do my best to keep this guide up-to-date and accurate but I cannot guarantee at this time that it will always be representative of the latest version.
+					</p>
+				</div>
+			</section>
+			<section id="contents">
+				<div class="narrow">
+					<h3>Contents</h3>
+					<h5><a href=#introduction>Introduction</a></h5>
+					<ul>
+						<li>
+							<a href=#theproject>The Project</a>
+						</li>
+						<li>
+							<a href=#theauthor>The Author</a>
+						</li>
+						<li>
+							<a href=#namingconventions>Naming Conventions</a>
+						</li>
+						<li>
+							<a href=#errorhandling>Error Handling</a>
+						</li>
+					</ul>
+					<h5><a href=#reference>Reference</a></h5>
+					<ul>
+						<li>
+							<a href=#azaInit>azaInit()</a>
+						</li>
+						<li>
+							<a href=#azaGetError>azaGetError()</a>
+						</li>
+						<li>
+							<a href=#errorcodes>Error Codes</a>
+						</li>
+					</ul>
+					<h5><a href=#usage>Usage</a></h5>
+					<ul>
+						<li>
+							<a href=#source>Source</a>
+						</li>
+						<li>
+							<a href=#dependencies>Dependencies</a>
+						</li>
+						<li>
+							<a href=#copyright>Copyright</a>
+						</li>
+						<li>
+							<a href=#license>License</a>
+						</li>
+					</ul>
+				</div>
+			</section>
+			<header id="introduction">
+				<div class="titleWrapper">
+					<div class="titleCentered">
+						<h2>Introduction</h2>
+					</div>
+				</div>
+			</header>
+			<section id="theproject">
+				<div class="narrow">
+					<h3>The Project</h3>
+					<p>
+						AzAudio is a cross-platform audio library for games being written in C with the mission to bring powerful, featureful 3D audio to developers with minimal friction. It is meant to be a simple, extensible, easy-to-use API that you can include in your projects for commercial or non-commercial use. The only condition to using this library is attribution to the original author, as detailed in the <a href=#license>license</a>.
+					</p>
+					<p>
+						On top of this will be a C++ wrapper library for those who like a little casual OOP.
+					</p>
+				</div>
+			</section>
+			<section id="theauthor">
+				<div class="narrow">
+					<h3>The Author</h3>
+					<p>
+						I'm Philip, AKA Equivocator, an programmer enthusiastic about learning how things work. With this insatiable appetite for learning new things, I started this project to fill the gap left by other audio libraries for a simple-to-ship static library for game audio.
+					</p>
+					<p>
+						I'm always open to feedback and am more than happy to answer any questions you may have. Should you have an inquiry, you can contact me via email at:<br/>
+					</p>
+					<p class="indent">
+						<a href="mail:singularity.haynes@gmail.com">singularity.haynes@gmail.com</a>
+					</p>
+				</div>
+			</section>
+			<section id="namingconventions">
+				<div class="narrow">
+					<h3>Naming Conventions</h3>
+					<p>
+						Based on my experience and personal preferences, I've chosen these naming conventions because they are distinct for each type of name they represent, which not only helps avoid conflicts, but also provides a way to identify what something is without looking it up or tagging it with an identifier. They are meant to be a good balance between clarity, and brevity.</p>
+					<h6>Preprocessor Macros</h6>
+					<p>
+						ALL_CAPS_WITH_UNDERSCORES<br/>
+						Prefixed with <i>AZA_</i> for the vast majority. The prefix <i>AZAUDIO_</i> is used exclusively for parameters the user may wish to change for compilation, and affect the build process.</p>
+					<h6>Functions</h6>
+					<p>
+						azaCapitalizeEveryWordWithoutSpaces<br/>
+						Always prefixed with <i>aza</i>.
+					</p>
+					<h6>Data Structures Repeatedly Passed to Functions</h6>
+					<p>
+						aza&lt;FunctionName&gt;Data<br/>
 
-                    </p>
-                    <h6>Functions Initializing These Data Structures</h6>
-                    <p>
-                        aza&lt;FunctionName&gt;DataInit( aza&lt;FunctionName&gt;Data *data )<br/>
-                    </p>
-                    <h6>Functions Cleaning These Data Structures</h6>
-                    <p>
-                        aza&lt;FunctionName&gt;DataClean( aza&lt;FunctionName&gt;Data *data )<br/>
-                    </p>
-                    <h6>Examples:</h6>
-                    <code>
-                        <ol>
-                            <li>&nbsp;</li>
-                            <li>#define AZA_PREPROCESSOR_VALUE</li>
-                            <li>#define AZURE_AUDIO_COMPILE_SETTING</li>
-                            <li>&nbsp;</li>
-                            <li><span class="comment">// Stereo channels</span></li>
-                            <li>azaFooData data[2];</li>
-                            <li>data[0].someParameter = someValue;</li>
-                            <li>data[1].someParameter = someValue;</li>
-                            <li><span class="comment">// It's important to set parameters first since memory may be allocated depending on them.</span></li>
-                            <li>azaFooDataInit( &data[0] );</li>
-                            <li>azaFooDataInit( &data[1] );</li>
-                            <li>float output[bufferSize];</li>
-                            <li><span class="comment">// input is an array of floats the same size as output</span></li>
-                            <li>if (azaFoo( input, output, data, bufferSize, 2 ))</li>
-                            <li><span class="comment">// Error handling</span></li>
-                            <li>azaFooDataClean( &data[0] );</li>
-                            <li>azaFooDataClean( &data[1] );</li>
-                            <li></li>
-                        </ol>
-                    </code>
-                </div>
-            </section>
-            <section id="errorhandling">
-                <div class="narrow">
-                    <h3>Error Handling</h3>
-                    <p>
-                        Any library function you call will return an error status as an <i>int</i>. On success, it will always return <i>AZA_SUCCESS</i>. Simple error checking can be done this way. You can store the value returned by the function, or, alternatively, can check the last error code by using <a href="#azaGetError">azaGetError()</a>.
-                    </p>
-                </div>
-            </section>
-            <header id="reference">
-                <div class="titleWrapper">
-                    <div class="titleCentered">
-                        <h2>Reference</h2>
-                    </div>
-                </div>
-            </header>
-            <section id="azaInit">
-                <div class="narrow">
-                    <h3>azaInit()</h3>
-                    <code>
-                        <ol>
-                            <li>&nbsp;</li>
-                            <li>int azaInit(void)</li>
-                            <li></li>
-                        </ol>
-                    </code>
-                    <h6>Description:</h6>
-                    <p>
-                        Initializes the library. This must be called before any other library functions! If this is omitted, behavior is undefined.
-                    </p>
-                    <h6>Returns:</h6>
-                    <p>AZA_SUCCESS on success</p>
-                </div>
-            </section>
-            <section id="azaGetError">
-                <div class="narrow">
-                    <h3>azaGetError()</h3>
-                    <code>
-                        <ol>
-                            <li>&nbsp;</li>
-                            <li>int azaGetError(void)</li>
-                            <li></li>
-                        </ol>
-                    </code>
-                    <h6>Description:</h6>
-                    <p>
-                        Gets the last error code set.
-                    </p>
-                    <h6>Returns:</h6>
-                    <p>
-                        Any library-specified <a href="#errorcodes">error code</a>.
-                    </p>
-                </div>
-            </section>
-            <section id="errorcodes">
-                <div class="narrow">
-                    <h3>Error Codes</h3>
-                    <p>
-                        These are all the possible error codes.
-                    </p>
-                    <code>
-                        <ol>
-                            <li>&nbsp;</li>
-                            <li>#define AZA_SUCCESS 0</li>
-                            <li><span class="comment">// The operation completed successfully</span></li>
-                            <li>#define AZA_ERROR_NULL_POINTER 1</li>
-                            <li><span class="comment">// A pointer was unexpectedly null</span></li>
-                            <li>#define AZA_ERROR_PORTAUDIO 2</li>
-                            <li><span class="comment">// PortAudio has generated an error</span></li>
-                            <li></li>
-                        </ol>
-                    </code>
-                </div>
-            </section>
-            <header id="usage">
-                <div class="titleWrapper">
-                    <div class="titleCentered">
-                        <h2>Usage</h2>
-                    </div>
-                </div>
-            </header>
-            <section id="source">
-                <div class="narrow">
-                    <h3>Source</h3>
-                    <p>
-                        The source can be found here: <a href="https://github.com/SingularityAzure/AzureAudio">https://github.com/SingularityAzure/AzureAudio</a>
-                    </p>
-                </div>
-            </section>
-            <section id="dependencies">
-                <div class="narrow">
-                    <h3>Dependencies</h3>
-                    <p>
-                        This library uses the <a href="http://portaudio.com/">PortAudio Portable Real-Time Audio Library</a>, and builds will have to be linked with it.
-                    </p>
-                </div>
-            </section>
-            <section id="copyright">
-                <div class="narrow">
-                    <h3>Copyright</h3>
-                    <p>
-                        PortAudio Portable Real-Time Audio Library<br/>
-                        Copyright (c) 1999-2011 Ross Bencina, Phil Burk, <a href="http://portaudio.com/docs/v19-doxydocs/License.html">MIT License</a>
-                    </p>
-                </div>
-            </section>
-            <section id="license">
-                <div class="narrow">
-                    <h3>License</h3>
-                    <p class="center">
-                        <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />
-                        This library is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
-                    </p>
-                </div>
-            </section>
-            <footer>
-                <div class="titleWrapper">
-                    <div class="titleCentered">
-                        <div class="narrow">
-                            <p class="center">
-                                Copyright © 2017 Philip Haynes, All Rights Reserved
-                            </p>
-                            <p class="center">
-                                <a href="mail:singularity.haynes@gmail.com" style="color: white;">singularity.haynes@gmail.com</a>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </footer>
-        </div>
-    </body>
+					</p>
+					<h6>Functions Initializing These Data Structures</h6>
+					<p>
+						aza&lt;FunctionName&gt;DataInit( aza&lt;FunctionName&gt;Data *data )<br/>
+					</p>
+					<h6>Functions Cleaning These Data Structures</h6>
+					<p>
+						aza&lt;FunctionName&gt;DataClean( aza&lt;FunctionName&gt;Data *data )<br/>
+					</p>
+					<h6>Examples:</h6>
+					<pre><code class="language-c">
+#define AZA_PREPROCESSOR_VALUE
+#define AZAUDIO_COMPILE_SETTING
+
+// Stereo channels
+azaFooData data[2];
+data[0].someParameter = someValue;
+data[1].someParameter = someValue;
+// It's important to set parameters first since allocated memory may depend on them.
+azaFooDataInit( &data[0] );
+azaFooDataInit( &data[1] );
+float output[bufferSize];
+// input is an array of floats the same size as output
+if (azaFoo( input, output, data, bufferSize, 2 )) {
+	// Error handling
+}
+azaFooDataClean( &data[0] );
+azaFooDataClean( &data[1] );
+					</code></pre>
+				</div>
+			</section>
+			<section id="errorhandling">
+				<div class="narrow">
+					<h3>Error Handling</h3>
+					<p>
+						Any library function you call will return an error status as an <i>int</i>. On success, it will always return <i>AZA_SUCCESS</i>. Simple error checking can be done this way. You can store the value returned by the function, or, alternatively, can check the last error code by using <a href="#azaGetError">azaGetError()</a>.
+					</p>
+				</div>
+			</section>
+			<header id="reference">
+				<div class="titleWrapper">
+					<div class="titleCentered">
+						<h2>Reference</h2>
+					</div>
+				</div>
+			</header>
+			<section id="azaInit">
+				<div class="narrow">
+					<h3>azaInit()</h3>
+					<pre><code class="language-c">
+int azaInit(void)
+					</code></pre>
+					<h6>Description:</h6>
+					<p>
+						Initializes the library. This must be called before any other library functions! If this is omitted, behavior is undefined.
+					</p>
+					<h6>Returns:</h6>
+					<p>AZA_SUCCESS on success</p>
+				</div>
+			</section>
+			<section id="azaGetError">
+				<div class="narrow">
+					<h3>azaGetError()</h3>
+					<pre><code class="language-c">
+int azaGetError(void)
+					</code></pre>
+					<h6>Description:</h6>
+					<p>
+						Gets the last error code set.
+					</p>
+					<h6>Returns:</h6>
+					<p>
+						Any library-specified <a href="#errorcodes">error code</a>.
+					</p>
+				</div>
+			</section>
+			<section id="errorcodes">
+				<div class="narrow">
+					<h3>Error Codes</h3>
+					<p>
+						These are all the possible error codes.
+					</p>
+					<pre><code class="language-c">
+// The operation completed successfully
+#define AZA_SUCCESS 0
+// A pointer was unexpectedly null
+#define AZA_ERROR_NULL_POINTER 1
+// PortAudio has generated an error
+#define AZA_ERROR_PORTAUDIO 2
+					</code></pre>
+				</div>
+			</section>
+			<header id="usage">
+				<div class="titleWrapper">
+					<div class="titleCentered">
+						<h2>Usage</h2>
+					</div>
+				</div>
+			</header>
+			<section id="source">
+				<div class="narrow">
+					<h3>Source</h3>
+					<p>
+						The source can be found here: <a href="https://github.com/SingularityAzure/AzAudio">https://github.com/SingularityAzure/AzAudio</a>
+					</p>
+				</div>
+			</section>
+			<section id="dependencies">
+				<div class="narrow">
+					<h3>Dependencies</h3>
+					<p>
+						TODO
+					</p>
+				</div>
+			</section>
+			<section id="license">
+				<div class="narrow">
+					<h3>License</h3>
+					<p class="center">
+						<a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />
+						This library is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
+					</p>
+				</div>
+			</section>
+			<footer>
+				<div class="titleWrapper">
+					<div class="titleCentered">
+						<div class="narrow">
+							<p class="center">
+								Copyright © 2024 Philip Haynes
+							</p>
+							<p class="center">
+								<a href="mail:singularity.haynes@gmail.com" style="color: white;">singularity.haynes@gmail.com</a>
+							</p>
+						</div>
+					</div>
+				</div>
+			</footer>
+		</div>
+	</body>
 </html>
