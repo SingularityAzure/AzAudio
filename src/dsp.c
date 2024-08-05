@@ -83,6 +83,12 @@ void azaReverbDataInit(azaReverbData *data) {
 	}
 }
 
+void azaReverbDataClean(azaReverbData *data) {
+	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
+		azaDelayDataClean(&data->delay[i]);
+	}
+}
+
 int azaSamplerDataInit(azaSamplerData *data) {
 	if (data->buffer == NULL) {
 		azaError = AZA_ERROR_NULL_POINTER;
@@ -96,10 +102,9 @@ int azaSamplerDataInit(azaSamplerData *data) {
 	return azaError;
 }
 
-void azaReverbDataClean(azaReverbData *data) {
-	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
-		azaDelayDataClean(&data->delay[i]);
-	}
+void azaGateDataInit(azaGateData *data) {
+	azaRmsDataInit(&data->rms);
+	data->attenuation = 0.0f;
 }
 
 int azaCubicLimiter(const float *input, float *output, int frames, int channels) {
@@ -348,7 +353,7 @@ int azaReverb(const float *input, float *output, azaReverbData *data, int frames
 		azaReverbData *datum = &data[i % channels];
 
 		float out = input[i];
-		float feedback = 0.98f - (0.2f / datum->roomsize);
+		float feedback = 0.985f - (0.2f / datum->roomsize);
 		float color = datum->color * 4000.0f;
 		for (int ii = 0; ii < AZAUDIO_REVERB_DELAY_COUNT*2/3; ii++) {
 			datum->delay[ii].feedback = feedback;
@@ -442,6 +447,33 @@ int azaSampler(const float *input, float *output, azaSamplerData *data, int fram
 		if ((int)datum->frame > datum->buffer->frames) {
 			datum->frame -= (float)datum->buffer->frames;
 		}
+	}
+	azaError = AZA_SUCCESS;
+	return azaError;
+}
+
+int azaGate(const float *input, float *output, azaGateData *data, int frames, int channels) {
+	const float t = (float)AZA_SAMPLERATE / 1000.0f;
+	for (int i = 0; i < frames*channels; i++) {
+		azaGateData *datum = &data[i % channels];
+
+		float rms;
+		azaRms(&input[i], &rms, &datum->rms, 1, 1);
+		rms = log10f(rms)*20.0f;
+		if (rms < -120.0f) rms = -120.0f;
+		if (rms > datum->threshold) {
+			datum->attenuation = rms + expf(-1.0f / (datum->attack * t)) * (datum->attenuation - rms);
+		} else {
+			datum->attenuation = rms + expf(-1.0f / (datum->decay * t)) * (datum->attenuation - rms);
+		}
+		float gain;
+		if (datum->attenuation > datum->threshold) {
+			gain = 0.0f;
+		} else {
+			gain = -10.0f * (datum->threshold - datum->attenuation);
+		}
+		datum->gain = gain;
+		output[i] = input[i] * powf(10.0f,gain/20.0f);
 	}
 	azaError = AZA_SUCCESS;
 	return azaError;

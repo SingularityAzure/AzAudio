@@ -102,6 +102,20 @@ typedef struct {
 } azaSamplerData;
 int azaSamplerDataInit(azaSamplerData *data);
 
+typedef struct {
+	azaRmsData rms;
+	float attenuation;
+	float gain;
+	// Static Configuration
+	// Cutoff threshold in dB
+	float threshold;
+	// Attack time in ms
+	float attack;
+	// Decay time in ms
+	float decay;
+} azaGateData;
+void azaGateDataInit(azaGateData *data);
+
 // Returns the root mean square (RMS) loudness
 int azaRms(const float *input, float *output, azaRmsData *data, int frames, int channels);
 
@@ -127,6 +141,8 @@ int azaLowPass(const float *input, float *output, azaLowPassData *data, int fram
 int azaHighPass(const float *input, float *output, azaHighPassData *data, int frames, int channels);
 
 int azaSampler(const float *input, float *output, azaSamplerData *data, int frames, int channels);
+
+int azaGate(const float *input, float *output, azaGateData *data, int frames, int channels);
 
 #ifdef __cplusplus
 }

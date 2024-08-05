@@ -55,14 +55,16 @@ static void azaStreamProcess(void *userdata) {
 	float *pcm = buffer->datas[0].data;
 	if (pcm == NULL) return;
 	int stride = sizeof(*pcm) * AZA_CHANNELS;
-	int numFrames = buffer->datas[0].maxsize / stride;
-	if (pw_buffer->requested) numFrames = SPA_MIN(pw_buffer->requested, numFrames);
+	int numFrames = buffer->datas[0].chunk->size / stride;
+	if (pw_buffer->requested) numFrames = SPA_MAX(pw_buffer->requested, numFrames);
 	
 	if (stream->capture) {
 		stream->mixCallback(pcm, NULL, numFrames, AZA_CHANNELS, stream);
 	} else {
 		stream->mixCallback(NULL, pcm, numFrames, AZA_CHANNELS, stream);
 	}
+	
+	// printf("%d frames.\n", numFrames);
 	
 	buffer->datas[0].chunk->offset = 0;
 	buffer->datas[0].chunk->stride = stride;
