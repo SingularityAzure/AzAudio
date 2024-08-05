@@ -17,12 +17,12 @@ LIBS_L=-lpthread `pkg-config --libs libpipewire-0.3`
 LIBS_W=-lwinmm
 
 _DEPS = log.hpp
-_DEPS_C = audio.h
+_DEPS_C = audio.h dsp.h helpers.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 DEPS_C = $(patsubst %,$(IDIR)/%,$(_DEPS_C))
 
 _OBJ = main.o log.o
-_OBJ_C = audio.o
+_OBJ_C = audio.o dsp.o helpers.o
 OBJ_L = $(patsubst %,$(ODIR)/Linux/cpp/%,$(_OBJ))
 OBJ_W = $(patsubst %,$(ODIR)/Windows/cpp/%,$(_OBJ))
 OBJ_L_C = $(patsubst %,$(ODIR)/Linux/c/%,$(_OBJ_C))

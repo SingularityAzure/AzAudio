@@ -11,30 +11,25 @@
 #ifndef AZAUDIO_H
 #define AZAUDIO_H
 
+#include "dsp.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Error handling
-#define AZA_SUCCESS 0
-	// The operation completed successfully
-#define AZA_ERROR_NULL_POINTER 1
-	// A pointer was unexpectedly null
-#define AZA_ERROR_ALSA 2
-	// ALSA has generated an error
-#define AZA_ERROR_INVALID_CHANNEL_COUNT 3
-	// A multi-channel function was passed zero or fewer channels
-#define AZA_ERROR_INVALID_FRAME_COUNT 4
-	// A multi-frame function was passed zero or fewer frames
 
-#define AZAUDIO_RMS_SAMPLES 128
-#define AZAUDIO_LOOKAHEAD_SAMPLES 128
-#define AZAUDIO_SAMPLER_TRANSITION_FRAMES 128
-	// The duration of transitions between the variable parameter values
-#define AZAUDIO_PLAYBACK_BUFFERS 4
-	// How many buffers we use for playback
-#define AZAUDIO_FRAMES_PER_BUFFER 256
-	// How many frames in each of the playback buffers
+// The operation completed successfully
+#define AZA_SUCCESS 0
+// A pointer was unexpectedly null
+#define AZA_ERROR_NULL_POINTER 1
+// A multi-channel function was passed zero or fewer channels
+#define AZA_ERROR_INVALID_CHANNEL_COUNT 2
+// A multi-frame function was passed zero or fewer frames
+#define AZA_ERROR_INVALID_FRAME_COUNT 3
+
+#define AZA_CHANNELS 2
+#define AZA_SAMPLERATE 48000
 
 // Latency should be equal to AZAUDIO_PLAYBACK_BUFFERS * AZAUDIO_FRAMES_PER_BUFFER samples
 
@@ -61,116 +56,17 @@ int azaSetLogCallback(azafpLogCallback newLogFunc);
 
 extern azafpLogCallback azaPrint;
 
-int azaDefaultMixFunc(const float *input, float *output, unsigned long frames, int channels, void *userData);
-
 // Allows custom mixing functions
 // NOTE: User must provide data structs for every effect used
 typedef int (*azafpMixCallback)(const float *input, float *output, unsigned long frames, int channels, void *userData);
 
-int azaSetMixCallback(azafpMixCallback newMixFunc);
-
-extern azafpMixCallback azaMix;
-
-void azaThreadCallback(void *data);
-
 //  Data structures
 
 typedef struct {
-	float *samples;
-	// Static paramaters
-	int frames;
-} azaBuffer;
-int azaBufferInit(azaBuffer *data);
-int azaBufferClean(azaBuffer *data);
-
-extern float *azaPlaybackBuffers[AZAUDIO_PLAYBACK_BUFFERS];
-	// To avoid potential hiccups we fill multiple buffers ahead of time for blitting
-extern int azaPlaybackBufferIn;
-extern int azaPlaybackBufferOut;
-extern int azaPlaybackBuffersNeeded;
-
-typedef struct {
-	float squared;
-	float buffer[AZAUDIO_RMS_SAMPLES];
-	int index;
-} azaRmsData;
-void azaRmsDataInit(azaRmsData *data);
-
-typedef struct {
-	float output;
-	// Static parameters
-	float samplerate;
-	float frequency;
-} azaFilterData;
-typedef azaFilterData azaLowPassData;
-typedef azaFilterData azaHighPassData;
-void azaLowPassDataInit(azaLowPassData *data);
-void azaHighPassDataInit(azaHighPassData *data);
-
-typedef struct {
-	float gainBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
-	float valBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
-	int index;
-	float sum;
-	// Static parameters
-	float gain;
-} azaLookaheadLimiterData;
-void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data);
-
-typedef struct {
-	azaRmsData rms;
-	float attenuation;
-	float gain; // For monitoring/debugging
-	// Static parameters
-	float samplerate;
-	float threshold;
-	float ratio;
-	float attack;
-	float decay;
-} azaCompressorData;
-void azaCompressorDataInit(azaCompressorData *data);
-
-typedef struct {
-	float *buffer; // Must be dynamically-allocated to allow different time spans
-	int index;
-	// Static parameters
-	float feedback;
-	float amount;
-	int samples;
-} azaDelayData;
-void azaDelayDataInit(azaDelayData *data);
-void azaDelayDataClean(azaDelayData *data);
-
-#define AZAUDIO_REVERB_DELAY_COUNT 15
-
-typedef struct {
-	azaDelayData delay[AZAUDIO_REVERB_DELAY_COUNT];
-	azaLowPassData lowPass[AZAUDIO_REVERB_DELAY_COUNT];
-	// Static parameters
-	float amount;
-	float roomsize;
-	float color;
-	int samplesOffset;
-} azaReverbData;
-void azaReverbDataInit(azaReverbData *data);
-void azaReverbDataClean(azaReverbData *data);
-
-typedef struct {
-	float frame;
-	float s; // Smooth speed
-	float g; // Smooth gain
-	// Static parameters
-	azaBuffer *buffer;
-	// Variable parameters
-	float speed;
-	float gain;
-} azaSamplerData;
-int azaSamplerDataInit(azaSamplerData *data);
-
-typedef struct {
-	void *handle;
+	void *data;
 	int capture; // Are we input or output?
 	unsigned sampleRate;
+	azafpMixCallback mixCallback;
 } azaStream;
 
 typedef struct {
@@ -188,38 +84,8 @@ int azaDefaultMixDataClean(azaDefaultMixData *data);
 
 // Core functionality
 
-int azaInitStream(azaStream *stream, const char *device, int capture);
+int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCallback mixCallback);
 void azaDeinitStream(azaStream *stream);
-
-int azaMicTestStart(azaStream *stream);
-
-int azaMicTestStop(azaStream *stream);
-
-// Returns the root mean square (RMS) loudness
-int azaRms(const float *input, float *output, azaRmsData *data, int frames, int channels);
-
-// Simple distortion to smooth harsh peaking
-int azaCubicLimiter(const float *input, float *output, int frames, int channels);
-
-/*  gain is in db
-	NOTE: This limiter increases latency by AZAUDIO_LOOKAHEAD_SAMPLES samples     */
-int azaLookaheadLimiter(const float *input, float *output, azaLookaheadLimiterData *data, int frames, int channels);
-
-/*  threshold is in db
-	ratio is defined as 1/x for positive values
-		becomes absolute for negative values (where -1 is the same as infinity)
-	attack and decay are in milliseconds        */
-int azaCompressor(const float *input, float *output, azaCompressorData *data, int frames, int channels);
-
-int azaDelay(const float *input, float *output, azaDelayData *data, int frames, int channels);
-
-int azaReverb(const float *input, float *output, azaReverbData *data, int frames, int channels);
-
-int azaLowPass(const float *input, float *output, azaLowPassData *data, int frames, int channels);
-
-int azaHighPass(const float *input, float *output, azaHighPassData *data, int frames, int channels);
-
-int azaSampler(const float *input, float *output, azaSamplerData *data, int frames, int channels);
 
 #ifdef __cplusplus
 }
