@@ -152,6 +152,8 @@ int azaRms(const float *input, float *output, azaRmsData *data, int frames, int 
 		datum->squared -= datum->buffer[datum->index];
 		datum->buffer[datum->index] = input[i] * input[i];
 		datum->squared += datum->buffer[datum->index++];
+		// Deal with potential rounding errors making sqrtf emit NaNs
+		if (datum->squared < 0.0f) datum->squared = 0.0f;
 		if (datum->index >= AZAUDIO_RMS_SAMPLES)
 			datum->index = 0;
 
@@ -282,6 +284,7 @@ int azaCompressor(const float *input, float *output, azaCompressorData *data, in
 		float rms;
 		azaRms(&input[i], &rms, &datum->rms, 1, 1);
 		rms = log10f(rms)*20.0f;
+		if (rms < -120.0f) rms = -120.0f;
 		float t = datum->samplerate / 1000.0f; // millisecond units
 		float mult;
 		if (datum->ratio > 0.0f) {
