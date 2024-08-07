@@ -44,57 +44,57 @@ azaReverbData reverbData[AZA_CHANNELS];
 azaHighPassData highPassData[AZA_CHANNELS];
 azaGateData gateData[AZA_CHANNELS];
 
-std::vector<float> buffer;
+std::vector<float> micBuffer;
 size_t lastBufferSize=0;
 
-int mixCallbackOutput(const float *input, float *output, unsigned long frames, int channels, void *userData) {
-	if (buffer.size() == lastBufferSize && buffer.size() > (frames*channels)*2) {
-		buffer.erase(buffer.end() - (frames*channels), buffer.end());
+int mixCallbackOutput(azaBuffer buffer, void *userData) {
+	if (micBuffer.size() == lastBufferSize && micBuffer.size() > (buffer.frames*buffer.channels)*2) {
+		micBuffer.erase(micBuffer.end() - (buffer.frames*buffer.channels), micBuffer.end());
 	}
-	lastBufferSize = buffer.size();
-	// printf("buffer size: %d\n", buffer.size() / channels);
+	lastBufferSize = micBuffer.size();
+	// printf("micBuffer size: %d\n", micBuffer.size() / buffer.channels);
 	// printf("output has ");
 	size_t i = 0;
-	for (; i < std::min(frames*channels, buffer.size()); i++) {
-		output[i] = buffer[i];
+	for (; i < std::min(buffer.frames*buffer.channels, micBuffer.size()); i++) {
+		buffer.samples[i] = micBuffer[i];
 	}
-	buffer.erase(buffer.begin(), buffer.begin() + i);
-	for (; i < frames*channels; i++) {
-		output[i] = 0.0f;
+	micBuffer.erase(micBuffer.begin(), micBuffer.begin() + i);
+	for (; i < buffer.frames*buffer.channels; i++) {
+		buffer.samples[i] = 0.0f;
 	}
-	if (azaGate(output, output, gateData, frames, channels)) {
+	if (azaGate(buffer, gateData)) {
 		return azaGetError();
 	}
 	// printf("gate gain: %f\n", gateData->gain);
-	if (azaDelay(output, output, delayData, frames, channels)) {
+	if (azaDelay(buffer, delayData)) {
 		return azaGetError();
 	}
-	if (azaDelay(output, output, delay2Data, frames, channels)) {
+	if (azaDelay(buffer, delay2Data)) {
 		return azaGetError();
 	}
-	if (azaDelay(output, output, delay3Data, frames, channels)) {
+	if (azaDelay(buffer, delay3Data)) {
 		return azaGetError();
 	}
-	if (azaReverb(output, output, reverbData, frames, channels)) {
+	if (azaReverb(buffer, reverbData)) {
 		return azaGetError();
 	}
-	if (azaHighPass(output, output, highPassData, frames, channels)) {
+	if (azaHighPass(buffer, highPassData)) {
 		return azaGetError();
 	}
-	if (azaCompressor(output, output, compressorData, frames, channels)) {
+	if (azaCompressor(buffer, compressorData)) {
 		return azaGetError();
 	}
-	if (azaLookaheadLimiter(output, output, limiterData, frames, channels)) {
+	if (azaLookaheadLimiter(buffer, limiterData)) {
 		return azaGetError();
 	}
 	return AZA_SUCCESS;
 }
 
-int mixCallbackInput(const float *input, float *output, unsigned long frames, int channels, void *userData) {
-	size_t b_i = buffer.size();
-	buffer.resize(buffer.size() + frames*channels);
-	for (unsigned long i = 0; i < frames*channels; i++) {
-		buffer[b_i + i] = input[i];
+int mixCallbackInput(azaBuffer buffer, void *userData) {
+	size_t b_i = micBuffer.size();
+	micBuffer.resize(micBuffer.size() + buffer.frames*buffer.channels);
+	for (unsigned long i = 0; i < buffer.frames*buffer.channels; i++) {
+		micBuffer[b_i + i] = buffer.samples[i];
 	}
 	// printf("input has  ");
 	return AZA_SUCCESS;
@@ -107,52 +107,55 @@ int main(int argumentCount, char** argumentValues) {
 	try {
 		azaInit();
 		for (int c = 0; c < AZA_CHANNELS; c++) {
-			gateData[c].threshold = -21.0f;
+			gateData[c].threshold = -24.0f;
 			gateData[c].attack = 1.0f;
 			gateData[c].decay = 200.0f;
 			azaGateDataInit(&gateData[c]);
 			
-			delayData[c].feedback = 0.8f;
-			delayData[c].amount = 0.2f;
-			delayData[c].samples = AZA_SAMPLERATE * 2;
+			delayData[c].gain = -12.0f;
+			delayData[c].gainDry = 0.0f;
+			delayData[c].delay = 1234.5f;
+			delayData[c].feedback = 0.7f;
 			azaDelayDataInit(&delayData[c]);
 			 
-			delay2Data[c].feedback = 0.8f;
-			delay2Data[c].amount = 0.2f;
-			delay2Data[c].samples = AZA_SAMPLERATE * 3;
+			delay2Data[c].gain = -12.0f;
+			delay2Data[c].gainDry = 0.0f;
+			delay2Data[c].delay = 2345.6f;
+			delay2Data[c].feedback = 0.7f;
 			azaDelayDataInit(&delay2Data[c]);
 			
-			delay3Data[c].feedback = 0.8f;
-			delay3Data[c].amount = 0.2f;
-			delay3Data[c].samples = AZA_SAMPLERATE * 5;
+			delay3Data[c].gain = -12.0f;
+			delay3Data[c].gainDry = 0.0f;
+			delay3Data[c].delay = 3456.7f;
+			delay3Data[c].feedback = 0.7f;
 			azaDelayDataInit(&delay3Data[c]);
 			
-			reverbData[c].amount = 1.0f;
+			reverbData[c].gain = 0.0f;
+			reverbData[c].gainDry = 0.0f;
 			reverbData[c].roomsize = 100.0f;
 			reverbData[c].color = 1.0f;
-			reverbData[c].samplesOffset = c * 377;
+			reverbData[c].delay = c * 377.0f / 48000.0f;
 			azaReverbDataInit(&reverbData[c]);
 			
-			highPassData[c].samplerate = AZA_SAMPLERATE;
 			highPassData[c].frequency = 80.0f;
 			azaHighPassDataInit(&highPassData[c]);
 			
-			compressorData[c].samplerate = AZA_SAMPLERATE;
 			compressorData[c].threshold = -24.0f;
 			compressorData[c].ratio = 10.0f;
 			compressorData[c].attack = 100.0f;
 			compressorData[c].decay = 200.0f;
 			azaCompressorDataInit(&compressorData[c]);
 			
-			limiterData[c].gain = 0.0f;
+			limiterData[c].gainInput = 0.0f;
+			limiterData[c].gainOutput = 0.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
 		azaSetLogCallback(logCallback);
 		azaStream streamInput, streamOutput;
-		if (azaInitStream(&streamInput, "default", true, mixCallbackInput) != AZA_SUCCESS) {
+		if (azaInitStream(&streamInput, "default", true, mixCallbackInput, nullptr) != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init input stream!");
 		}
-		if (azaInitStream(&streamOutput, "default", false, mixCallbackOutput) != AZA_SUCCESS) {
+		if (azaInitStream(&streamOutput, "default", false, mixCallbackOutput, nullptr) != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init output stream!");
 		}
 		std::cout << "Press ENTER to stop" << std::endl;
@@ -160,11 +163,11 @@ int main(int argumentCount, char** argumentValues) {
 		azaDeinitStream(&streamInput);
 		azaDeinitStream(&streamOutput);
 		for (int c = 0; c < AZA_CHANNELS; c++) {
-			azaDelayDataClean(&delayData[c]);
-			azaReverbDataClean(&reverbData[c]);
+			azaDelayDataDeinit(&delayData[c]);
+			azaReverbDataDeinit(&reverbData[c]);
 		}
 		
-		azaClean();
+		azaDeinit();
 	} catch (std::runtime_error& e) {
 		sys::cout << "Runtime Error: " << e.what() << std::endl;
 	}

@@ -142,7 +142,7 @@
 					</p>
 					<h6>Functions Cleaning These Data Structures</h6>
 					<p>
-						aza&lt;FunctionName&gt;DataClean( aza&lt;FunctionName&gt;Data *data )<br/>
+						aza&lt;FunctionName&gt;DataDeinit( aza&lt;FunctionName&gt;Data *data )<br/>
 					</p>
 					<h6>Examples:</h6>
 					<pre><code class="language-c">
@@ -161,8 +161,8 @@ float output[bufferSize];
 if (azaFoo( input, output, data, bufferSize, 2 )) {
 	// Error handling
 }
-azaFooDataClean( &data[0] );
-azaFooDataClean( &data[1] );
+azaFooDataDeinit( &data[0] );
+azaFooDataDeinit( &data[1] );
 					</code></pre>
 				</div>
 			</section>

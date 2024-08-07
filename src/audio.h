@@ -42,7 +42,7 @@ extern "C" {
 
 int azaInit();
 
-int azaClean();
+int azaDeinit();
 
 int azaGetError();
 
@@ -56,14 +56,13 @@ int azaSetLogCallback(azafpLogCallback newLogFunc);
 
 extern azafpLogCallback azaPrint;
 
-// Allows custom mixing functions
-// NOTE: User must provide data structs for every effect used
-typedef int (*azafpMixCallback)(const float *input, float *output, unsigned long frames, int channels, void *userData);
+typedef int (*azafpMixCallback)(azaBuffer buffer, void *userData);
 
 //  Data structures
 
 typedef struct {
 	void *data;
+	void *userdata;
 	int capture; // Are we input or output?
 	unsigned sampleRate;
 	azafpMixCallback mixCallback;
@@ -80,11 +79,11 @@ typedef struct {
 	int channels;
 } azaDefaultMixData;
 int azaDefaultMixDataInit(azaDefaultMixData *data);
-int azaDefaultMixDataClean(azaDefaultMixData *data);
+int azaDefaultMixDataDeinit(azaDefaultMixData *data);
 
 // Core functionality
 
-int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCallback mixCallback);
+int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCallback mixCallback, void *userdata);
 void azaDeinitStream(azaStream *stream);
 
 #ifdef __cplusplus

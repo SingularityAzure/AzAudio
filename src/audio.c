@@ -58,11 +58,13 @@ static void azaStreamProcess(void *userdata) {
 	int numFrames = buffer->datas[0].chunk->size / stride;
 	if (pw_buffer->requested) numFrames = SPA_MAX(pw_buffer->requested, numFrames);
 	
-	if (stream->capture) {
-		stream->mixCallback(pcm, NULL, numFrames, AZA_CHANNELS, stream);
-	} else {
-		stream->mixCallback(NULL, pcm, numFrames, AZA_CHANNELS, stream);
-	}
+	stream->mixCallback((azaBuffer){
+		.samples = pcm,
+		.frames = numFrames,
+		.stride = AZA_CHANNELS,
+		.channels = AZA_CHANNELS,
+		.samplerate = AZA_SAMPLERATE,
+	}, stream->userdata);
 	
 	// printf("%d frames.\n", numFrames);
 	
@@ -98,7 +100,7 @@ int azaInit() {
 	return azaError;
 }
 
-int azaClean() {
+int azaDeinit() {
 	pw_thread_loop_stop(loop);
 	pw_thread_loop_destroy(loop);
 	pw_deinit();
@@ -106,7 +108,7 @@ int azaClean() {
 	return azaError;
 }
 
-int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCallback mixCallback) {
+int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCallback mixCallback, void *userdata) {
 	azaStreamData *data = calloc(sizeof(azaStreamData), 1);
 	data->stream_events.version = PW_VERSION_STREAM_EVENTS;
 	data->stream_events.process = azaStreamProcess;
@@ -134,6 +136,7 @@ int azaInitStream(azaStream *stream, const char *device, int capture, azafpMixCa
 	);
 	pw_thread_loop_unlock(loop);
 	stream->data = data;
+	stream->userdata = userdata;
 	stream->capture = capture;
 	stream->mixCallback = mixCallback;
 	stream->sampleRate = AZA_SAMPLERATE;
