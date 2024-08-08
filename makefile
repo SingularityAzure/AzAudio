@@ -63,7 +63,7 @@ all: linux windows
 .PHONY: clean runl runw rundl rundw
 
 clean:
-	rm -f $(ODIR)/Linux/c/*.o $(ODIR)/Windows/c/*.o $(ODIR)/Linux/cpp/*.o $(ODIR)/Windows/cpp/*.o *~ core $(INCDIR)/*~
+	rm -rf $(ODIR) $(BDIR)
 
 runl:
 	./bin/Linux/Test

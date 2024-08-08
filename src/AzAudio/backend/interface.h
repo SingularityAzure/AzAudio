@@ -45,6 +45,15 @@ extern fp_azaStreamInit azaStreamInit;
 typedef void (*fp_azaStreamDeinit)(azaStream *stream);
 extern fp_azaStreamDeinit azaStreamDeinit;
 
+typedef size_t (*fp_azaGetDeviceCount)(azaDeviceInterface interface);
+extern fp_azaGetDeviceCount azaGetDeviceCount;
+
+typedef const char* (*fp_azaGetDeviceName)(azaDeviceInterface interface, size_t index);
+extern fp_azaGetDeviceName azaGetDeviceName;
+
+typedef size_t (*fp_azaGetDeviceChannels)(azaDeviceInterface interface, size_t index);
+extern fp_azaGetDeviceChannels azaGetDeviceChannels;
+
 #ifdef __cplusplus
 }
 #endif

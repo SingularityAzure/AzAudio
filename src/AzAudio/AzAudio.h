@@ -39,7 +39,7 @@ void azaDefaultLogFunc(const char* message);
 // This allows the user to define their own logging output functions
 typedef void (*fp_azaLogCallback)(const char* message);
 
-int azaSetLogCallback(fp_azaLogCallback newLogFunc);
+void azaSetLogCallback(fp_azaLogCallback newLogFunc);
 
 extern fp_azaLogCallback azaPrint;
 

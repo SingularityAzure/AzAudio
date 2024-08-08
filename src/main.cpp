@@ -108,6 +108,20 @@ int main(int argumentCount, char** argumentValues) {
 	#endif
 	try {
 		azaInit();
+		{ // Query devices
+			size_t numOutputDevices = azaGetDeviceCount(AZA_OUTPUT);
+			sys::cout << "Output Devices: " << numOutputDevices << std::endl;
+			for (size_t i = 0; i < numOutputDevices; i++) {
+				size_t channels = azaGetDeviceChannels(AZA_OUTPUT, i);
+				sys::cout << "\t" << azaGetDeviceName(AZA_OUTPUT, i) << " with " << channels << " channels." << std::endl;
+			}
+			size_t numInputDevices = azaGetDeviceCount(AZA_INPUT);
+			sys::cout << "Input Devices: " << numInputDevices << std::endl;
+			for (size_t i = 0; i < numInputDevices; i++) {
+				size_t channels = azaGetDeviceChannels(AZA_INPUT, i);
+				sys::cout << "\t" << azaGetDeviceName(AZA_INPUT, i) << " with " << channels << " channels." << std::endl;
+			}
+		}
 		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
 			gateData[c].threshold = -24.0f;
 			gateData[c].attack = 1.0f;
@@ -117,19 +131,19 @@ int main(int argumentCount, char** argumentValues) {
 			delayData[c].gain = -12.0f;
 			delayData[c].gainDry = 0.0f;
 			delayData[c].delay = 1234.5f;
-			delayData[c].feedback = 0.7f;
+			delayData[c].feedback = 0.5f;
 			azaDelayDataInit(&delayData[c]);
 			 
 			delay2Data[c].gain = -12.0f;
 			delay2Data[c].gainDry = 0.0f;
 			delay2Data[c].delay = 2345.6f;
-			delay2Data[c].feedback = 0.7f;
+			delay2Data[c].feedback = 0.5f;
 			azaDelayDataInit(&delay2Data[c]);
 			
 			delay3Data[c].gain = -12.0f;
 			delay3Data[c].gainDry = 0.0f;
 			delay3Data[c].delay = 3456.7f;
-			delay3Data[c].feedback = 0.7f;
+			delay3Data[c].feedback = 0.5f;
 			azaDelayDataInit(&delay3Data[c]);
 			
 			reverbData[c].gain = 0.0f;

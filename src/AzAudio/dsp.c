@@ -360,7 +360,7 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaDelayData *datum = &data[c];
 		size_t delaySamples = aza_ms_to_samples(datum->delay, buffer.samplerate);
-		azaDelayDataHandleBufferResizes(data, delaySamples);
+		azaDelayDataHandleBufferResizes(datum, delaySamples);
 		float amount = aza_db_to_ampf(datum->gain);
 		float amountDry = aza_db_to_ampf(datum->gainDry);
 		

@@ -14,15 +14,10 @@
 
 // Helper functions
 
-fp_azaLogCallback azaPrint;
+fp_azaLogCallback azaPrint = azaDefaultLogFunc;
 
 int azaInit() {
-	int err;
-	azaPrint = azaDefaultLogFunc;
-	err = azaBackendInit();
-	if (err) return err;
-	
-	return AZA_SUCCESS;
+	return azaBackendInit();
 }
 
 void azaDeinit() {
@@ -35,11 +30,10 @@ void azaDefaultLogFunc(const char* message) {
 	#endif
 }
 
-int azaSetLogCallback(fp_azaLogCallback newLogFunc) {
+void azaSetLogCallback(fp_azaLogCallback newLogFunc) {
 	if (newLogFunc != NULL) {
 		azaPrint = newLogFunc;
 	} else {
 		azaPrint = azaDefaultLogFunc;
 	}
-	return AZA_SUCCESS;
 }
