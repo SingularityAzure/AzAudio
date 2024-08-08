@@ -97,12 +97,12 @@ static struct pw_core *core;
 static struct pw_registry *registry;
 static struct spa_hook registry_listener;
 
-static int pending;
-static int synced = AZA_FALSE;
+static int flushSeq;
+static int flushSynced = AZA_FALSE;
 
 static void azaCoreDone(void *data, uint32_t id, int seq) {
-	if (id == PW_ID_CORE && seq == pending) {
-		synced = AZA_TRUE;
+	if (id == PW_ID_CORE && seq == flushSeq) {
+		flushSynced = AZA_TRUE;
 	}
 }
 
@@ -114,24 +114,20 @@ static void azaPipewireFlush() {
 	struct spa_hook core_listener;
 	
 	fp_pw_thread_loop_lock(loop);
-	synced = AZA_FALSE;
+	flushSynced = AZA_FALSE;
 	
 	pw_core_add_listener(core, &core_listener, &core_events, NULL);
-	pending = pw_core_sync(core, PW_ID_CORE, 0);
+	flushSeq = pw_core_sync(core, PW_ID_CORE, 0);
 	
-	int count = 0;
 	do {
 		fp_pw_thread_loop_unlock(loop);
-		count++;
 		struct timespec timespec = {
 			.tv_nsec = 1000,
 			.tv_sec = 0,
 		};
 		thrd_sleep(&timespec, NULL);
 		fp_pw_thread_loop_lock(loop);
-	} while (!synced);
-	
-	AZA_PRINT_INFO("Had to unlock %d times\n", count);
+	} while (!flushSynced);
 	
 	spa_hook_remove(&core_listener);
 	
@@ -140,7 +136,7 @@ static void azaPipewireFlush() {
 
 // This is meant to be called in the thread_loop thread. This allows you to flush future events.
 static void azaPipewireRefreshFlush() {
-	pending = pw_core_sync(core, PW_ID_CORE, 0);
+	flushSeq = pw_core_sync(core, PW_ID_CORE, 0);
 }
 
 /*
