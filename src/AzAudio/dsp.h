@@ -18,6 +18,8 @@ extern "C" {
 // The duration of transitions between the variable parameter values
 #define AZAUDIO_SAMPLER_TRANSITION_FRAMES 128
 
+
+
 // Buffer used by DSP functions for their input/output
 typedef struct azaBuffer {
 	// actual read/write-able data
@@ -48,12 +50,16 @@ static inline azaBuffer azaBufferOneSample(float *sample, size_t samplerate) {
 	};
 }
 
+
 typedef struct azaRmsData {
 	float squared;
 	float buffer[AZAUDIO_RMS_SAMPLES];
 	int index;
 } azaRmsData;
 void azaRmsDataInit(azaRmsData *data);
+int azaRms(azaBuffer buffer, azaRmsData *data);
+
+
 
 typedef struct azaFilterData {
 	float output;
@@ -67,7 +73,16 @@ typedef azaFilterData azaLowPassData;
 typedef azaFilterData azaHighPassData;
 void azaLowPassDataInit(azaLowPassData *data);
 void azaHighPassDataInit(azaHighPassData *data);
+int azaLowPass(azaBuffer buffer, azaLowPassData *data);
+int azaHighPass(azaBuffer buffer, azaHighPassData *data);
 
+
+
+int azaCubicLimiter(azaBuffer buffer);
+
+
+
+// NOTE: This limiter increases latency by AZAUDIO_LOOKAHEAD_SAMPLES samples
 typedef struct azaLookaheadLimiterData {
 	float gainBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
 	float valBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
@@ -82,6 +97,9 @@ typedef struct azaLookaheadLimiterData {
 	float gainOutput;
 } azaLookaheadLimiterData;
 void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data);
+int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data);
+
+
 
 typedef struct azaCompressorData {
 	azaRmsData rmsData;
@@ -101,6 +119,9 @@ typedef struct azaCompressorData {
 	float decay;
 } azaCompressorData;
 void azaCompressorDataInit(azaCompressorData *data);
+int azaCompressor(azaBuffer buffer, azaCompressorData *data);
+
+
 
 typedef struct azaDelayData {
 	float *buffer; // Must be dynamically-allocated to allow different time spans
@@ -122,9 +143,11 @@ typedef struct azaDelayData {
 } azaDelayData;
 void azaDelayDataInit(azaDelayData *data);
 void azaDelayDataDeinit(azaDelayData *data);
+int azaDelay(azaBuffer buffer, azaDelayData *data);
+
+
 
 #define AZAUDIO_REVERB_DELAY_COUNT 15
-
 typedef struct azaReverbData {
 	azaDelayData delayDatas[AZAUDIO_REVERB_DELAY_COUNT];
 	azaLowPassData lowPassDatas[AZAUDIO_REVERB_DELAY_COUNT];
@@ -144,6 +167,9 @@ typedef struct azaReverbData {
 } azaReverbData;
 void azaReverbDataInit(azaReverbData *data);
 void azaReverbDataDeinit(azaReverbData *data);
+int azaReverb(azaBuffer buffer, azaReverbData *data);
+
+
 
 typedef struct azaSamplerData {
 	float frame;
@@ -160,6 +186,9 @@ typedef struct azaSamplerData {
 	float gain;
 } azaSamplerData;
 int azaSamplerDataInit(azaSamplerData *data);
+int azaSampler(azaBuffer buffer, azaSamplerData *data);
+
+
 
 typedef struct azaGateData {
 	azaRmsData rms;
@@ -176,29 +205,9 @@ typedef struct azaGateData {
 	float decay;
 } azaGateData;
 void azaGateDataInit(azaGateData *data);
-
-// Returns the root mean square (RMS) loudness
-int azaRms(azaBuffer buffer, azaRmsData *data);
-
-// Simple distortion to smooth harsh peaking
-int azaCubicLimiter(azaBuffer buffer);
-
-// NOTE: This limiter increases latency by AZAUDIO_LOOKAHEAD_SAMPLES samples
-int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data);
-
-int azaCompressor(azaBuffer buffer, azaCompressorData *data);
-
-int azaDelay(azaBuffer buffer, azaDelayData *data);
-
-int azaReverb(azaBuffer buffer, azaReverbData *data);
-
-int azaLowPass(azaBuffer buffer, azaLowPassData *data);
-
-int azaHighPass(azaBuffer buffer, azaHighPassData *data);
-
-int azaSampler(azaBuffer buffer, azaSamplerData *data);
-
 int azaGate(azaBuffer buffer, azaGateData *data);
+
+
 
 #ifdef __cplusplus
 }

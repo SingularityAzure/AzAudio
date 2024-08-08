@@ -11,6 +11,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+
+static int azaCheckBuffer(azaBuffer buffer) {
+	if (buffer.samples == NULL) {
+		return AZA_ERROR_NULL_POINTER;
+	}
+	if (buffer.channels < 1) {
+		return AZA_ERROR_INVALID_CHANNEL_COUNT;
+	}
+	if (buffer.frames < 1) {
+		return AZA_ERROR_INVALID_FRAME_COUNT;
+	}
+	return AZA_SUCCESS;
+}
+
+
+
 int azaBufferInit(azaBuffer *data) {
 	if (data->frames < 1) {
 		data->samples = NULL;
@@ -29,134 +46,14 @@ int azaBufferDeinit(azaBuffer *data) {
 	return AZA_ERROR_NULL_POINTER;
 }
 
+
+
 void azaRmsDataInit(azaRmsData *data) {
 	data->squared = 0.0f;
 	for (int i = 0; i < AZAUDIO_RMS_SAMPLES; i++) {
 		data->buffer[i] = 0.0f;
 	}
 	data->index = 0;
-}
-
-void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data) {
-	memset(data->gainBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
-	memset(data->valBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
-	data->index = 0;
-	data->sum = 0.0f;
-}
-
-void azaLowPassDataInit(azaLowPassData *data) {
-	data->output = 0.0f;
-}
-
-void azaHighPassDataInit(azaHighPassData *data) {
-	data->output = 0.0f;
-}
-
-void azaCompressorDataInit(azaCompressorData *data) {
-	azaRmsDataInit(&data->rmsData);
-	data->attenuation = 0.0f;
-	data->gain = 0.0f;
-}
-
-static void azaDelayDataHandleBufferResizes(azaDelayData *data, size_t delaySamples) {
-	if (data->delaySamples >= delaySamples) {
-		if (data->index > delaySamples) {
-			data->index = 0;
-		}
-		data->delaySamples = delaySamples;
-		return;
-	} else if (data->capacity >= delaySamples) {
-		data->delaySamples = delaySamples;
-		return;
-	}
-	// Have to realloc buffer
-	size_t newCapacity = aza_grow(data->capacity, delaySamples, 1024);
-	float *newBuffer = malloc(sizeof(float) * newCapacity);
-	if (data->buffer) {
-		memcpy(newBuffer, data->buffer, sizeof(float) * data->delaySamples);
-		free(data->buffer);
-	}
-	data->buffer = newBuffer;
-	for (size_t i = data->delaySamples; i < delaySamples; i++) {
-		data->buffer[i] = 0.0f;
-	}
-	data->delaySamples = delaySamples;
-}
-
-void azaDelayDataInit(azaDelayData *data) {
-	data->buffer = NULL;
-	data->capacity = 0;
-	data->delaySamples = 0;
-	data->index = 0;
-	azaDelayDataHandleBufferResizes(data, aza_ms_to_samples(data->delay, 48000));
-}
-
-void azaDelayDataDeinit(azaDelayData *data) {
-	free(data->buffer);
-}
-
-void azaReverbDataInit(azaReverbData *data) {
-	float delays[AZAUDIO_REVERB_DELAY_COUNT] = {
-		AZA_SAMPLES_TO_MS(1557, 48000),
-		AZA_SAMPLES_TO_MS(1617, 48000),
-		AZA_SAMPLES_TO_MS(1491, 48000),
-		AZA_SAMPLES_TO_MS(1422, 48000),
-		AZA_SAMPLES_TO_MS(1277, 48000),
-		AZA_SAMPLES_TO_MS(1356, 48000),
-		AZA_SAMPLES_TO_MS(1188, 48000),
-		AZA_SAMPLES_TO_MS(1116, 48000),
-		AZA_SAMPLES_TO_MS(2111, 48000),
-		AZA_SAMPLES_TO_MS(2133, 48000),
-		AZA_SAMPLES_TO_MS( 673, 48000),
-		AZA_SAMPLES_TO_MS( 556, 48000),
-		AZA_SAMPLES_TO_MS( 441, 48000),
-		AZA_SAMPLES_TO_MS( 341, 48000),
-		AZA_SAMPLES_TO_MS( 713, 48000),
-	};
-	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
-		data->delayDatas[i].delay = delays[i] + data->delay;
-		data->delayDatas[i].gain = 0.0f;
-		data->delayDatas[i].gainDry = 0.0f;
-		azaDelayDataInit(&data->delayDatas[i]);
-		azaLowPassDataInit(&data->lowPassDatas[i]);
-	}
-}
-
-void azaReverbDataDeinit(azaReverbData *data) {
-	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
-		azaDelayDataDeinit(&data->delayDatas[i]);
-	}
-}
-
-int azaSamplerDataInit(azaSamplerData *data) {
-	if (data->buffer == NULL) {
-		AZA_PRINT_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
-		return AZA_ERROR_NULL_POINTER;
-	}
-	data->frame = 0;
-	data->s = data->speed;
-	// Starting at zero ensures click-free playback no matter what
-	data->g = 0.0f;
-	return AZA_SUCCESS;
-}
-
-void azaGateDataInit(azaGateData *data) {
-	azaRmsDataInit(&data->rms);
-	data->attenuation = 0.0f;
-	data->gain = 0.0f;
-}
-
-static int azaCheckBuffer(azaBuffer buffer) {
-	if (buffer.samples == NULL) {
-		return AZA_ERROR_NULL_POINTER;
-	}
-	if (buffer.channels < 1) {
-		return AZA_ERROR_INVALID_CHANNEL_COUNT;
-	}
-	if (buffer.frames < 1) {
-		return AZA_ERROR_INVALID_FRAME_COUNT;
-	}
-	return AZA_SUCCESS;
 }
 
 int azaRms(azaBuffer buffer, azaRmsData *data) {
@@ -185,6 +82,8 @@ int azaRms(azaBuffer buffer, azaRmsData *data) {
 	}
 	return AZA_SUCCESS;
 }
+
+
 
 static float azaCubicLimiterSample(float sample) {
 	if (sample > 1.0f)
@@ -215,6 +114,15 @@ int azaCubicLimiter(azaBuffer buffer) {
 		}
 	}
 	return AZA_SUCCESS;
+}
+
+
+
+void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data) {
+	memset(data->gainBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
+	memset(data->valBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
+	data->index = 0;
+	data->sum = 0.0f;
 }
 
 int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
@@ -264,6 +172,16 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 	return AZA_SUCCESS;
 }
 
+
+
+void azaLowPassDataInit(azaLowPassData *data) {
+	data->output = 0.0f;
+}
+
+void azaHighPassDataInit(azaHighPassData *data) {
+	data->output = 0.0f;
+}
+
 int azaLowPass(azaBuffer buffer, azaLowPassData *data) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
@@ -302,6 +220,14 @@ int azaHighPass(azaBuffer buffer, azaHighPassData *data) {
 		}
 	}
 	return AZA_SUCCESS;
+}
+
+
+
+void azaCompressorDataInit(azaCompressorData *data) {
+	azaRmsDataInit(&data->rmsData);
+	data->attenuation = 0.0f;
+	data->gain = 0.0f;
 }
 
 int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
@@ -350,6 +276,45 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 	return AZA_SUCCESS;
 }
 
+
+
+static void azaDelayDataHandleBufferResizes(azaDelayData *data, size_t delaySamples) {
+	if (data->delaySamples >= delaySamples) {
+		if (data->index > delaySamples) {
+			data->index = 0;
+		}
+		data->delaySamples = delaySamples;
+		return;
+	} else if (data->capacity >= delaySamples) {
+		data->delaySamples = delaySamples;
+		return;
+	}
+	// Have to realloc buffer
+	size_t newCapacity = aza_grow(data->capacity, delaySamples, 1024);
+	float *newBuffer = malloc(sizeof(float) * newCapacity);
+	if (data->buffer) {
+		memcpy(newBuffer, data->buffer, sizeof(float) * data->delaySamples);
+		free(data->buffer);
+	}
+	data->buffer = newBuffer;
+	for (size_t i = data->delaySamples; i < delaySamples; i++) {
+		data->buffer[i] = 0.0f;
+	}
+	data->delaySamples = delaySamples;
+}
+
+void azaDelayDataInit(azaDelayData *data) {
+	data->buffer = NULL;
+	data->capacity = 0;
+	data->delaySamples = 0;
+	data->index = 0;
+	azaDelayDataHandleBufferResizes(data, aza_ms_to_samples(data->delay, 48000));
+}
+
+void azaDelayDataDeinit(azaDelayData *data) {
+	free(data->buffer);
+}
+
 int azaDelay(azaBuffer buffer, azaDelayData *data) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
@@ -376,6 +341,41 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 		}
 	}
 	return AZA_SUCCESS;
+}
+
+
+
+void azaReverbDataInit(azaReverbData *data) {
+	float delays[AZAUDIO_REVERB_DELAY_COUNT] = {
+		AZA_SAMPLES_TO_MS(1557, 48000),
+		AZA_SAMPLES_TO_MS(1617, 48000),
+		AZA_SAMPLES_TO_MS(1491, 48000),
+		AZA_SAMPLES_TO_MS(1422, 48000),
+		AZA_SAMPLES_TO_MS(1277, 48000),
+		AZA_SAMPLES_TO_MS(1356, 48000),
+		AZA_SAMPLES_TO_MS(1188, 48000),
+		AZA_SAMPLES_TO_MS(1116, 48000),
+		AZA_SAMPLES_TO_MS(2111, 48000),
+		AZA_SAMPLES_TO_MS(2133, 48000),
+		AZA_SAMPLES_TO_MS( 673, 48000),
+		AZA_SAMPLES_TO_MS( 556, 48000),
+		AZA_SAMPLES_TO_MS( 441, 48000),
+		AZA_SAMPLES_TO_MS( 341, 48000),
+		AZA_SAMPLES_TO_MS( 713, 48000),
+	};
+	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
+		data->delayDatas[i].delay = delays[i] + data->delay;
+		data->delayDatas[i].gain = 0.0f;
+		data->delayDatas[i].gainDry = 0.0f;
+		azaDelayDataInit(&data->delayDatas[i]);
+		azaLowPassDataInit(&data->lowPassDatas[i]);
+	}
+}
+
+void azaReverbDataDeinit(azaReverbData *data) {
+	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
+		azaDelayDataDeinit(&data->delayDatas[i]);
+	}
 }
 
 int azaReverb(azaBuffer buffer, azaReverbData *data) {
@@ -415,6 +415,20 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 			buffer.samples[s] = out * amount + buffer.samples[s] * amountDry;
 		}
 	}
+	return AZA_SUCCESS;
+}
+
+
+
+int azaSamplerDataInit(azaSamplerData *data) {
+	if (data->buffer == NULL) {
+		AZA_PRINT_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
+		return AZA_ERROR_NULL_POINTER;
+	}
+	data->frame = 0;
+	data->s = data->speed;
+	// Starting at zero ensures click-free playback no matter what
+	data->g = 0.0f;
 	return AZA_SUCCESS;
 }
 
@@ -486,6 +500,14 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 		}
 	}
 	return AZA_SUCCESS;
+}
+
+
+
+void azaGateDataInit(azaGateData *data) {
+	azaRmsDataInit(&data->rms);
+	data->attenuation = 0.0f;
+	data->gain = 0.0f;
 }
 
 int azaGate(azaBuffer buffer, azaGateData *data) {
