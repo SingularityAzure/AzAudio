@@ -14,6 +14,15 @@
 extern "C" {
 #endif
 
+#ifndef AZAUDIO_NO_STDIO
+#include <stdio.h>
+#define AZA_PRINT_ERR(...) fprintf(stderr, __VA_ARGS__)
+#define AZA_PRINT_INFO(...) printf(__VA_ARGS__)
+#else
+#define AZA_PRINT_ERR(...) (void)
+#define AZA_PRINT_INFO(...) (void)
+#endif
+
 float trif(float x);
 
 float sqrf(float x);

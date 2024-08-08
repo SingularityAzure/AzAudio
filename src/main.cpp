@@ -8,7 +8,8 @@
 #include <vector>
 
 #include "log.hpp"
-#include "audio.h"
+#include "AzAudio/AzAudio.h"
+#include "AzAudio/error.h"
 
 #ifdef __unix
 #include <csignal>
@@ -35,14 +36,14 @@ void logCallback(const char* message) {
 	sys::cout << "AzAudio: " << message << std::endl;
 }
 
-azaLookaheadLimiterData limiterData[AZA_CHANNELS];
-azaCompressorData compressorData[AZA_CHANNELS];
-azaDelayData delayData[AZA_CHANNELS];
-azaDelayData delay2Data[AZA_CHANNELS];
-azaDelayData delay3Data[AZA_CHANNELS];
-azaReverbData reverbData[AZA_CHANNELS];
-azaHighPassData highPassData[AZA_CHANNELS];
-azaGateData gateData[AZA_CHANNELS];
+azaLookaheadLimiterData limiterData[AZA_CHANNELS_DEFAULT];
+azaCompressorData compressorData[AZA_CHANNELS_DEFAULT];
+azaDelayData delayData[AZA_CHANNELS_DEFAULT];
+azaDelayData delay2Data[AZA_CHANNELS_DEFAULT];
+azaDelayData delay3Data[AZA_CHANNELS_DEFAULT];
+azaReverbData reverbData[AZA_CHANNELS_DEFAULT];
+azaHighPassData highPassData[AZA_CHANNELS_DEFAULT];
+azaGateData gateData[AZA_CHANNELS_DEFAULT];
 
 std::vector<float> micBuffer;
 size_t lastBufferSize=0;
@@ -62,30 +63,31 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	for (; i < buffer.frames*buffer.channels; i++) {
 		buffer.samples[i] = 0.0f;
 	}
-	if (azaGate(buffer, gateData)) {
-		return azaGetError();
+	int err;
+	if ((err = azaGate(buffer, gateData))) {
+		return err;
 	}
 	// printf("gate gain: %f\n", gateData->gain);
-	if (azaDelay(buffer, delayData)) {
-		return azaGetError();
+	if ((err = azaDelay(buffer, delayData))) {
+		return err;
 	}
-	if (azaDelay(buffer, delay2Data)) {
-		return azaGetError();
+	if ((err = azaDelay(buffer, delay2Data))) {
+		return err;
 	}
-	if (azaDelay(buffer, delay3Data)) {
-		return azaGetError();
+	if ((err = azaDelay(buffer, delay3Data))) {
+		return err;
 	}
-	if (azaReverb(buffer, reverbData)) {
-		return azaGetError();
+	if ((err = azaReverb(buffer, reverbData))) {
+		return err;
 	}
-	if (azaHighPass(buffer, highPassData)) {
-		return azaGetError();
+	if ((err = azaHighPass(buffer, highPassData))) {
+		return err;
 	}
-	if (azaCompressor(buffer, compressorData)) {
-		return azaGetError();
+	if ((err = azaCompressor(buffer, compressorData))) {
+		return err;
 	}
-	if (azaLookaheadLimiter(buffer, limiterData)) {
-		return azaGetError();
+	if ((err = azaLookaheadLimiter(buffer, limiterData))) {
+		return err;
 	}
 	return AZA_SUCCESS;
 }
@@ -106,7 +108,7 @@ int main(int argumentCount, char** argumentValues) {
 	#endif
 	try {
 		azaInit();
-		for (int c = 0; c < AZA_CHANNELS; c++) {
+		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
 			gateData[c].threshold = -24.0f;
 			gateData[c].attack = 1.0f;
 			gateData[c].decay = 200.0f;
@@ -151,18 +153,22 @@ int main(int argumentCount, char** argumentValues) {
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
 		azaSetLogCallback(logCallback);
-		azaStream streamInput, streamOutput;
-		if (azaInitStream(&streamInput, "default", true, mixCallbackInput, nullptr) != AZA_SUCCESS) {
+		azaStream streamInput = {0};
+		streamInput.mixCallback = mixCallbackInput;
+		streamInput.deviceInterface = AZA_INPUT;
+		azaStream streamOutput = {0};
+		streamOutput.mixCallback = mixCallbackOutput;
+		if (azaStreamInit(&streamInput, "default") != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init input stream!");
 		}
-		if (azaInitStream(&streamOutput, "default", false, mixCallbackOutput, nullptr) != AZA_SUCCESS) {
+		if (azaStreamInit(&streamOutput, "default") != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init output stream!");
 		}
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
-		azaDeinitStream(&streamInput);
-		azaDeinitStream(&streamOutput);
-		for (int c = 0; c < AZA_CHANNELS; c++) {
+		azaStreamDeinit(&streamInput);
+		azaStreamDeinit(&streamOutput);
+		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
 			azaDelayDataDeinit(&delayData[c]);
 			azaReverbDataDeinit(&reverbData[c]);
 		}

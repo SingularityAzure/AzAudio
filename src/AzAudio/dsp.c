@@ -3,35 +3,30 @@
 	Author: Philip Haynes
 */
 
-#include "audio.h"
+#include "dsp.h"
 
+#include "error.h"
 #include "helpers.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-extern int azaError;
-
 int azaBufferInit(azaBuffer *data) {
 	if (data->frames < 1) {
-		azaError = AZA_ERROR_INVALID_FRAME_COUNT;
 		data->samples = NULL;
-		return azaError;
+		return AZA_ERROR_INVALID_FRAME_COUNT;
 	}
 	data->samples = (float*)malloc(sizeof(float) * data->frames * data->channels);
 	data->stride = data->channels;
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaBufferDeinit(azaBuffer *data) {
 	if (data->samples != NULL) {
 		free(data->samples);
-		azaError = AZA_SUCCESS;
-		return azaError;
+		return AZA_SUCCESS;
 	}
-	azaError = AZA_ERROR_NULL_POINTER;
-	return azaError;
+	return AZA_ERROR_NULL_POINTER;
 }
 
 void azaRmsDataInit(azaRmsData *data) {
@@ -135,16 +130,14 @@ void azaReverbDataDeinit(azaReverbData *data) {
 
 int azaSamplerDataInit(azaSamplerData *data) {
 	if (data->buffer == NULL) {
-		azaError = AZA_ERROR_NULL_POINTER;
-		azaPrint("Sampler initialized without a buffer!");
-		return azaError;
+		AZA_PRINT_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
+		return AZA_ERROR_NULL_POINTER;
 	}
 	data->frame = 0;
 	data->s = data->speed;
 	// Starting at zero ensures click-free playback no matter what
 	data->g = 0.0f;
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 void azaGateDataInit(azaGateData *data) {
@@ -155,23 +148,20 @@ void azaGateDataInit(azaGateData *data) {
 
 static int azaCheckBuffer(azaBuffer buffer) {
 	if (buffer.samples == NULL) {
-		azaError = AZA_ERROR_NULL_POINTER;
-		return azaError;
+		return AZA_ERROR_NULL_POINTER;
 	}
 	if (buffer.channels < 1) {
-		azaError = AZA_ERROR_INVALID_CHANNEL_COUNT;
-		return azaError;
+		return AZA_ERROR_INVALID_CHANNEL_COUNT;
 	}
 	if (buffer.frames < 1) {
-		azaError = AZA_ERROR_INVALID_FRAME_COUNT;
-		return azaError;
+		return AZA_ERROR_INVALID_FRAME_COUNT;
 	}
 	return AZA_SUCCESS;
 }
 
 int azaRms(azaBuffer buffer, azaRmsData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -193,8 +183,7 @@ int azaRms(azaBuffer buffer, azaRmsData *data) {
 			buffer.samples[s] = sqrtf(datum->squared/AZAUDIO_RMS_SAMPLES);
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 static float azaCubicLimiterSample(float sample) {
@@ -225,13 +214,12 @@ int azaCubicLimiter(azaBuffer buffer) {
 			}
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -273,13 +261,12 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 			buffer.samples[s] = out * amountOutput;
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaLowPass(azaBuffer buffer, azaLowPassData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -294,13 +281,12 @@ int azaLowPass(azaBuffer buffer, azaLowPassData *data) {
 			buffer.samples[s] = datum->output;
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaHighPass(azaBuffer buffer, azaHighPassData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -315,13 +301,12 @@ int azaHighPass(azaBuffer buffer, azaHighPassData *data) {
 			buffer.samples[s] = buffer.samples[s] - datum->output;
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -362,13 +347,12 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 			buffer.samples[s] = buffer.samples[s] * aza_db_to_ampf(gain);
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaDelay(azaBuffer buffer, azaDelayData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -391,13 +375,12 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 			buffer.samples[s] = datum->buffer[datum->index] * amount + buffer.samples[s] * amountDry;
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaReverb(azaBuffer buffer, azaReverbData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -432,13 +415,12 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 			buffer.samples[s] = out * amount + buffer.samples[s] * amountDry;
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 	if (data == NULL) {
-		return azaError = AZA_ERROR_NULL_POINTER;
+		return AZA_ERROR_NULL_POINTER;
 	} else {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -503,8 +485,7 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 			}
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }
 
 int azaGate(azaBuffer buffer, azaGateData *data) {
@@ -536,6 +517,5 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 			buffer.samples[s] = buffer.samples[s] * aza_db_to_ampf(gain);
 		}
 	}
-	azaError = AZA_SUCCESS;
-	return azaError;
+	return AZA_SUCCESS;
 }

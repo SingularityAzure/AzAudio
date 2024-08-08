@@ -1,4 +1,5 @@
 IDIR=src
+IDIR_AZAUDIO=$(SDIR)/AzAudio
 CC=g++
 CC_C=gcc
 WCC=i686-w64-mingw32-g++
@@ -10,38 +11,42 @@ WCFLAGS_C=-static-libgcc
 
 BDIR=bin
 SDIR=src
+SDIR_AZAUDIO=$(SDIR)/AzAudio
 ODIR=obj
 LDIR=lib
 
-LIBS_L=-lpthread `pkg-config --libs libpipewire-0.3`
+LIBS_L=-lpthread
+# LIBS_L=-lpthread `pkg-config --libs libpipewire-0.3`
 LIBS_W=-lwinmm
 
 _DEPS = log.hpp
-_DEPS_C = audio.h dsp.h helpers.h
+_DEPS_C = AzAudio.h dsp.h error.h helpers.h $(addprefix backend/, interface.h backend.h)
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
-DEPS_C = $(patsubst %,$(IDIR)/%,$(_DEPS_C))
+DEPS_C = $(patsubst %,$(IDIR_AZAUDIO)/%,$(_DEPS_C))
 
 _OBJ = main.o log.o
-_OBJ_C = audio.o dsp.o helpers.o
+_OBJ_C = AzAudio.o dsp.o helpers.o $(addprefix backend/, interface.o)
+_OBJ_C_L = $(_OBJ_C) $(addprefix backend/Linux/, pipewire.o pulseaudio.o jack.o alsa.o)
+_OBJ_C_W = $(_OBJ_C)
 OBJ_L = $(patsubst %,$(ODIR)/Linux/cpp/%,$(_OBJ))
 OBJ_W = $(patsubst %,$(ODIR)/Windows/cpp/%,$(_OBJ))
-OBJ_L_C = $(patsubst %,$(ODIR)/Linux/c/%,$(_OBJ_C))
-OBJ_W_C = $(patsubst %,$(ODIR)/Windows/c/%,$(_OBJ_C))
+OBJ_L_C = $(patsubst %,$(ODIR)/Linux/c/%,$(_OBJ_C_L))
+OBJ_W_C = $(patsubst %,$(ODIR)/Windows/c/%,$(_OBJ_C_W))
 
 
-$(ODIR)/Linux/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
+$(ODIR)/Linux/cpp/%.o: $(SDIR)/%.cpp $(DEPS) $(DEPS_C)
 	@mkdir -p $(@D)
 	$(CC) -c -o $@ $< -g -rdynamic $(CFLAGS)
 
-$(ODIR)/Windows/cpp/%.o: $(SDIR)/%.cpp $(DEPS)
+$(ODIR)/Windows/cpp/%.o: $(SDIR)/%.cpp $(DEPS) $(DEPS_C)
 	@mkdir -p $(@D)
 	$(WCC) -c -o $@ $< -g $(CFLAGS)
 
-$(ODIR)/Linux/c/%.o: $(SDIR)/%.c $(DEPS_C)
+$(ODIR)/Linux/c/%.o: $(SDIR_AZAUDIO)/%.c $(DEPS_C)
 	@mkdir -p $(@D)
 	$(CC_C) -c -o $@ $< -g -rdynamic $(CFLAGS_C)
 
-$(ODIR)/Windows/c/%.o: $(SDIR)/%.c $(DEPS_C)
+$(ODIR)/Windows/c/%.o: $(SDIR_AZAUDIO)/%.c $(DEPS_C)
 	@mkdir -p $(@D)
 	$(WCC_C) -c -o $@ $< -g $(CFLAGS_C)
 
