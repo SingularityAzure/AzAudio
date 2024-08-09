@@ -46,22 +46,52 @@ azaFilterData highPassData[AZA_CHANNELS_DEFAULT];
 azaGateData gateData[AZA_CHANNELS_DEFAULT];
 
 std::vector<float> micBuffer;
-size_t lastBufferSize=0;
+size_t lastOutputBufferSize=0;
+size_t lastInputBufferSize=0;
+size_t numOutputBuffers=0;
+size_t numInputBuffers=0;
 
 int mixCallbackOutput(azaBuffer buffer, void *userData) {
-	if (micBuffer.size() == lastBufferSize && micBuffer.size() > (buffer.frames*buffer.channels)*2) {
-		micBuffer.erase(micBuffer.end() - (buffer.frames*buffer.channels), micBuffer.end());
+	size_t count = buffer.frames*buffer.channels;
+	numOutputBuffers++;
+	if (micBuffer.size() == lastOutputBufferSize && micBuffer.size() > count*2) {
+		sys::cout << "Shrunk!" << std::endl;
+		// Crossfade from new end to actual end
+		float t = 0.0f;
+		for (size_t i = micBuffer.size()-255*buffer.channels; i < micBuffer.size(); i++) {
+			if (i % buffer.channels == 0) {
+				t = std::min(1.0f, t + 1.0f / 256.0f);
+			}
+			float *dst = &micBuffer[i - count];
+			float src = micBuffer[i];
+			*dst = *dst + (src - *dst) * t;
+		}
+		micBuffer.erase(micBuffer.end() - count, micBuffer.end());
 	}
-	lastBufferSize = micBuffer.size();
+	lastOutputBufferSize = micBuffer.size();
 	// printf("micBuffer size: %d\n", micBuffer.size() / buffer.channels);
 	// printf("output has ");
 	size_t i = 0;
-	for (; i < std::min(buffer.frames*buffer.channels, micBuffer.size()); i++) {
-		buffer.samples[i] = micBuffer[i];
+	static float lastSample = 0.0f;
+	static float fadein = 0.0f;
+	for (; i < std::min(count, micBuffer.size()); i++) {
+		if (i % buffer.channels == 0) {
+			fadein = std::min(1.0f, fadein + 1.0f / 256.0f);
+			lastSample = std::max(0.0f, lastSample - 1.0f / 256.0f);
+		}
+		buffer.samples[i] = lastSample + micBuffer[i] * fadein;
+	}
+	if (count > micBuffer.size()) {
+		fadein = 0.0f;
+		if (micBuffer.size()) lastSample = micBuffer.back();
+		sys::cout << "Buffer underrun (" << micBuffer.size() << "/" << count << " samples available, last input buffer was " << lastInputBufferSize << " samples and last output buffer was " << count << " samples, had " << numInputBuffers << " input buffers and " << numOutputBuffers << " output buffers so far)" << std::endl;
 	}
 	micBuffer.erase(micBuffer.begin(), micBuffer.begin() + i);
-	for (; i < buffer.frames*buffer.channels; i++) {
-		buffer.samples[i] = 0.0f;
+	for (; i < count; i++) {
+		if (i % buffer.channels == 0) {
+			lastSample = std::max(0.0f, lastSample - 1.0f / 256.0f);
+		}
+		buffer.samples[i] = lastSample;
 	}
 	int err;
 	if ((err = azaGate(buffer, gateData))) {
@@ -93,6 +123,8 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 }
 
 int mixCallbackInput(azaBuffer buffer, void *userData) {
+	numInputBuffers++;
+	lastInputBufferSize = buffer.frames*buffer.channels;
 	size_t b_i = micBuffer.size();
 	micBuffer.resize(micBuffer.size() + buffer.frames*buffer.channels);
 	for (unsigned long i = 0; i < buffer.frames*buffer.channels; i++) {
@@ -163,7 +195,7 @@ int main(int argumentCount, char** argumentValues) {
 			compressorData[c].decay = 200.0f;
 			azaCompressorDataInit(&compressorData[c]);
 			
-			limiterData[c].gainInput = 0.0f;
+			limiterData[c].gainInput = 12.0f;
 			limiterData[c].gainOutput = 0.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
@@ -171,11 +203,11 @@ int main(int argumentCount, char** argumentValues) {
 		azaStream streamInput = {0};
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;
-		azaStream streamOutput = {0};
-		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamInput, "default") != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init input stream!");
 		}
+		azaStream streamOutput = {0};
+		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamOutput, "default") != AZA_SUCCESS) {
 			throw std::runtime_error("Failed to init output stream!");
 		}
