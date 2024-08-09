@@ -28,6 +28,8 @@ enum {
 	AZA_ERROR_INVALID_FRAME_COUNT,
 	// Something wasn't configured right... check stderr
 	AZA_ERROR_INVALID_CONFIGURATION,
+	// A generic azaDSPData struct wasn't a valid kind
+	AZA_ERROR_INVALID_DSP_STRUCT,
 };
 
 #ifdef __cplusplus

@@ -10,6 +10,41 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
+#include <assert.h>
+
+
+#define AZA_MAX_SIDE_BUFFERS 64
+thread_local azaBuffer sideBufferPool[AZA_MAX_SIDE_BUFFERS] = {{}};
+thread_local size_t sideBufferCapacity[AZA_MAX_SIDE_BUFFERS] = {0};
+thread_local size_t sideBuffersInUse = 0;
+
+static azaBuffer azaPushSideBuffer(size_t frames, size_t channels, size_t samplerate) {
+	assert(sideBuffersInUse < AZA_MAX_SIDE_BUFFERS);
+	azaBuffer *buffer = &sideBufferPool[sideBuffersInUse];
+	size_t *capacity = &sideBufferCapacity[sideBuffersInUse];
+	size_t capacityNeeded = frames * channels;
+	if (*capacity < capacityNeeded) {
+		if (*capacity) {
+			azaBufferDeinit(buffer);
+		}
+	}
+	buffer->frames = frames;
+	buffer->stride = channels;
+	buffer->channels = channels;
+	buffer->samplerate = samplerate;
+	if (*capacity < capacityNeeded) {
+		azaBufferInit(buffer);
+		*capacity = capacityNeeded;
+	}
+	sideBuffersInUse++;
+	return *buffer;
+}
+
+static void azaPopSideBuffer() {
+	assert(sideBuffersInUse > 0);
+	sideBuffersInUse--;
+}
 
 
 
@@ -48,7 +83,26 @@ int azaBufferDeinit(azaBuffer *data) {
 
 
 
+int azaDSP(azaBuffer buffer, azaDSPData *data) {
+	switch (data->kind) {
+		case AZA_DSP_RMS: return azaRms(buffer, (azaRmsData*)data);
+		case AZA_DSP_FILTER: return azaFilter(buffer, (azaFilterData*)data);
+		case AZA_DSP_LOOKAHEAD_LIMITER: return azaLookaheadLimiter(buffer, (azaLookaheadLimiterData*)data);
+		case AZA_DSP_COMPRESSOR: return azaCompressor(buffer, (azaCompressorData*)data);
+		case AZA_DSP_DELAY: return azaDelay(buffer, (azaDelayData*)data);
+		case AZA_DSP_REVERB: return azaReverb(buffer, (azaReverbData*)data);
+		case AZA_DSP_SAMPLER: return azaSampler(buffer, (azaSamplerData*)data);
+		case AZA_DSP_GATE: return azaGate(buffer, (azaGateData*)data);
+		default: return AZA_ERROR_INVALID_DSP_STRUCT;
+	}
+}
+
+
+
 void azaRmsDataInit(azaRmsData *data) {
+	data->header.kind = AZA_DSP_RMS;
+	data->header.structSize = sizeof(*data);
+
 	data->squared = 0.0f;
 	for (int i = 0; i < AZAUDIO_RMS_SAMPLES; i++) {
 		data->buffer[i] = 0.0f;
@@ -65,7 +119,7 @@ int azaRms(azaBuffer buffer, azaRmsData *data) {
 	}
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaRmsData *datum = &data[c];
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 			datum->squared -= datum->buffer[datum->index];
@@ -73,12 +127,15 @@ int azaRms(azaBuffer buffer, azaRmsData *data) {
 			datum->squared += datum->buffer[datum->index];
 			// Deal with potential rounding errors making sqrtf emit NaNs
 			if (datum->squared < 0.0f) datum->squared = 0.0f;
-			
+
 			if (++datum->index >= AZAUDIO_RMS_SAMPLES)
 				datum->index = 0;
 
 			buffer.samples[s] = sqrtf(datum->squared/AZAUDIO_RMS_SAMPLES);
 		}
+	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
 	}
 	return AZA_SUCCESS;
 }
@@ -119,6 +176,9 @@ int azaCubicLimiter(azaBuffer buffer) {
 
 
 void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data) {
+	data->header.kind = AZA_DSP_LOOKAHEAD_LIMITER;
+	data->header.structSize = sizeof(*data);
+
 	memset(data->gainBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
 	memset(data->valBuffer, 0, sizeof(float) * AZAUDIO_LOOKAHEAD_SAMPLES);
 	data->index = 0;
@@ -135,7 +195,7 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaLookaheadLimiterData *datum = &data[c];
 		float amountOutput = aza_db_to_ampf(datum->gainOutput);
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 			float peak = buffer.samples[s];
@@ -169,12 +229,18 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 			buffer.samples[s] = out * amountOutput;
 		}
 	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
+	}
 	return AZA_SUCCESS;
 }
 
 
 
 void azaFilterDataInit(azaFilterData *data) {
+	data->header.kind = AZA_DSP_FILTER;
+	data->header.structSize = sizeof(*data);
+
 	data->output = 0.0f;
 }
 
@@ -205,12 +271,18 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 				break;
 		}
 	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
+	}
 	return AZA_SUCCESS;
 }
 
 
 
 void azaCompressorDataInit(azaCompressorData *data) {
+	data->header.kind = AZA_DSP_COMPRESSOR;
+	data->header.structSize = sizeof(*data);
+
 	azaRmsDataInit(&data->rmsData);
 	data->attenuation = 0.0f;
 	data->gain = 0.0f;
@@ -223,6 +295,7 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
+	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaCompressorData *datum = &data[c];
 		float t = (float)buffer.samplerate / 1000.0f;
@@ -236,13 +309,16 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 		} else {
 			overgainFactor = 0.0f;
 		}
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
-			float rms = buffer.samples[s];
-
-			azaRms(azaBufferOneSample(&rms, buffer.samplerate), &datum->rmsData);
-			rms = aza_amp_to_dbf(rms);
+			sideBuffer.samples[i] = buffer.samples[s];
+		}
+		azaRms(sideBuffer, &datum->rmsData);
+		for (size_t i = 0; i < buffer.frames; i++) {
+			size_t s = i * buffer.stride + c;
+			
+			float rms = aza_amp_to_dbf(sideBuffer.samples[i]);
 			if (rms < -120.0f) rms = -120.0f;
 			if (rms > datum->attenuation) {
 				datum->attenuation = rms + attackFactor * (datum->attenuation - rms);
@@ -258,6 +334,10 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 			datum->gain = gain;
 			buffer.samples[s] = buffer.samples[s] * aza_db_to_ampf(gain);
 		}
+	}
+	azaPopSideBuffer();
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
 	}
 	return AZA_SUCCESS;
 }
@@ -290,6 +370,9 @@ static void azaDelayDataHandleBufferResizes(azaDelayData *data, size_t delaySamp
 }
 
 void azaDelayDataInit(azaDelayData *data) {
+	data->header.kind = AZA_DSP_DELAY;
+	data->header.structSize = sizeof(*data);
+
 	data->buffer = NULL;
 	data->capacity = 0;
 	data->delaySamples = 0;
@@ -308,23 +391,35 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
+	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaDelayData *datum = &data[c];
 		size_t delaySamples = aza_ms_to_samples(datum->delay, buffer.samplerate);
 		azaDelayDataHandleBufferResizes(datum, delaySamples);
 		float amount = aza_db_to_ampf(datum->gain);
 		float amountDry = aza_db_to_ampf(datum->gainDry);
-		
+		size_t index = datum->index;
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
-
-			datum->buffer[datum->index] = buffer.samples[s] + datum->buffer[datum->index] * datum->feedback;
-			datum->index++;
-			if (datum->index >= delaySamples) {
-				datum->index = 0;
-			}
-			buffer.samples[s] = datum->buffer[datum->index] * amount + buffer.samples[s] * amountDry;
+			sideBuffer.samples[i] = buffer.samples[s] + datum->buffer[index] * datum->feedback;
+			index = (index+1) % delaySamples;
 		}
+		if (datum->wetEffects) {
+			int err = azaDSP(sideBuffer, datum->wetEffects);
+			if (err) return err;
+		}
+		index = datum->index;
+		for (size_t i = 0; i < buffer.frames; i++) {
+			size_t s = i * buffer.stride + c;
+			datum->buffer[index] = sideBuffer.samples[i];
+			index = (index+1) % delaySamples;
+			buffer.samples[s] = datum->buffer[index] * amount + buffer.samples[s] * amountDry;
+		}
+		datum->index = index;
+	}
+	azaPopSideBuffer();
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
 	}
 	return AZA_SUCCESS;
 }
@@ -332,6 +427,9 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 
 
 void azaReverbDataInit(azaReverbData *data) {
+	data->header.kind = AZA_DSP_REVERB;
+	data->header.structSize = sizeof(*data);
+
 	float delays[AZAUDIO_REVERB_DELAY_COUNT] = {
 		AZA_SAMPLES_TO_MS(1557, 48000),
 		AZA_SAMPLES_TO_MS(1617, 48000),
@@ -378,7 +476,7 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 		float color = datum->color * 4000.0f;
 		float amount = aza_db_to_ampf(datum->gain);
 		float amountDry = aza_db_to_ampf(datum->gainDry);
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 
@@ -402,12 +500,18 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 			buffer.samples[s] = out * amount + buffer.samples[s] * amountDry;
 		}
 	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
+	}
 	return AZA_SUCCESS;
 }
 
 
 
 int azaSamplerDataInit(azaSamplerData *data) {
+	data->header.kind = AZA_DSP_SAMPLER;
+	data->header.structSize = sizeof(*data);
+
 	if (data->buffer == NULL) {
 		AZA_PRINT_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
 		return AZA_ERROR_NULL_POINTER;
@@ -430,13 +534,13 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaSamplerData *datum = &data[c];
 		float samplerateFactor = (float)buffer.samplerate / (float)datum->buffer->samplerate;
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 
 			datum->s = datum->speed + transition * (datum->s - datum->speed);
 			datum->g = datum->gain + transition * (datum->g - datum->gain);
-			
+
 			// Adjust for different samplerates
 			float speed = datum->s * samplerateFactor;
 			float volume = aza_db_to_ampf(datum->g);
@@ -486,12 +590,18 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 			}
 		}
 	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
+	}
 	return AZA_SUCCESS;
 }
 
 
 
 void azaGateDataInit(azaGateData *data) {
+	data->header.kind = AZA_DSP_GATE;
+	data->header.structSize = sizeof(*data);
+
 	azaRmsDataInit(&data->rms);
 	data->attenuation = 0.0f;
 	data->gain = 0.0f;
@@ -503,7 +613,7 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 		float t = (float)buffer.samplerate / 1000.0f;
 		float attackFactor = expf(-1.0f / (datum->attack * t));
 		float decayFactor = expf(-1.0f / (datum->decay * t));
-		
+
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 
@@ -525,6 +635,9 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 			datum->gain = gain;
 			buffer.samples[s] = buffer.samples[s] * aza_db_to_ampf(gain);
 		}
+	}
+	if (data->header.pNext) {
+		return azaDSP(buffer, data->header.pNext);
 	}
 	return AZA_SUCCESS;
 }

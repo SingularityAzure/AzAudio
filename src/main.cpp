@@ -36,14 +36,15 @@ void logCallback(const char* message) {
 	sys::cout << "AzAudio: " << message << std::endl;
 }
 
-azaLookaheadLimiterData limiterData[AZA_CHANNELS_DEFAULT];
-azaCompressorData compressorData[AZA_CHANNELS_DEFAULT];
-azaDelayData delayData[AZA_CHANNELS_DEFAULT];
-azaDelayData delay2Data[AZA_CHANNELS_DEFAULT];
-azaDelayData delay3Data[AZA_CHANNELS_DEFAULT];
-azaReverbData reverbData[AZA_CHANNELS_DEFAULT];
-azaFilterData highPassData[AZA_CHANNELS_DEFAULT];
-azaGateData gateData[AZA_CHANNELS_DEFAULT];
+azaLookaheadLimiterData limiterData[AZA_CHANNELS_DEFAULT] = {{}};
+azaCompressorData compressorData[AZA_CHANNELS_DEFAULT] = {{}};
+azaDelayData delayData[AZA_CHANNELS_DEFAULT] = {{}};
+azaDelayData delay2Data[AZA_CHANNELS_DEFAULT] = {{}};
+azaDelayData delay3Data[AZA_CHANNELS_DEFAULT] = {{}};
+azaReverbData reverbData[AZA_CHANNELS_DEFAULT] = {{}};
+azaFilterData highPassData[AZA_CHANNELS_DEFAULT] = {{}};
+azaGateData gateData[AZA_CHANNELS_DEFAULT] = {{}};
+azaFilterData lowPassData[AZA_CHANNELS_DEFAULT] = {{}};
 
 std::vector<float> micBuffer;
 size_t lastOutputBufferSize=0;
@@ -94,25 +95,28 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		buffer.samples[i] = lastSample;
 	}
 	int err;
+	// if ((err = azaFilter(buffer, lowPassData))) {
+	// 	return err;
+	// }
 	if ((err = azaGate(buffer, gateData))) {
 		return err;
 	}
 	// printf("gate gain: %f\n", gateData->gain);
-	if ((err = azaDelay(buffer, delayData))) {
-		return err;
-	}
-	if ((err = azaDelay(buffer, delay2Data))) {
-		return err;
-	}
+	// if ((err = azaDelay(buffer, delayData))) {
+	// 	return err;
+	// }
+	// if ((err = azaDelay(buffer, delay2Data))) {
+	// 	return err;
+	// }
 	if ((err = azaDelay(buffer, delay3Data))) {
 		return err;
 	}
 	if ((err = azaReverb(buffer, reverbData))) {
 		return err;
 	}
-	if ((err = azaFilter(buffer, highPassData))) {
-		return err;
-	}
+	// if ((err = azaFilter(buffer, highPassData))) {
+	// 	return err;
+	// }
 	if ((err = azaCompressor(buffer, compressorData))) {
 		return err;
 	}
@@ -156,8 +160,8 @@ int main(int argumentCount, char** argumentValues) {
 		}
 		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
 			gateData[c].threshold = -24.0f;
-			gateData[c].attack = 1.0f;
-			gateData[c].decay = 200.0f;
+			gateData[c].attack = 10.0f;
+			gateData[c].decay = 1000.0f;
 			azaGateDataInit(&gateData[c]);
 			
 			delayData[c].gain = -12.0f;
@@ -172,22 +176,29 @@ int main(int argumentCount, char** argumentValues) {
 			delay2Data[c].feedback = 0.5f;
 			azaDelayDataInit(&delay2Data[c]);
 			
-			delay3Data[c].gain = -12.0f;
-			delay3Data[c].gainDry = 0.0f;
-			delay3Data[c].delay = 3456.7f;
-			delay3Data[c].feedback = 0.5f;
+			delay3Data[c].gain = -3.0f;
+			delay3Data[c].gainDry = -3.0f;
+			delay3Data[c].delay = 1000.0f;
+			delay3Data[c].feedback = 0.95f;
 			azaDelayDataInit(&delay3Data[c]);
+			delay3Data[c].wetEffects = (azaDSPData*)&lowPassData[c];
 			
-			reverbData[c].gain = 0.0f;
-			reverbData[c].gainDry = 0.0f;
-			reverbData[c].roomsize = 100.0f;
-			reverbData[c].color = 1.0f;
-			reverbData[c].delay = c * 377.0f / 48000.0f;
-			azaReverbDataInit(&reverbData[c]);
+			lowPassData[c].kind = AZA_FILTER_LOW_PASS;
+			lowPassData[c].frequency = 1000.0f;
+			azaFilterDataInit(&lowPassData[c]);
+			lowPassData[c].header.pNext = (azaDSPData*)&highPassData[c];
 			
 			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
-			highPassData[c].frequency = 100.0f;
+			highPassData[c].frequency = 1000.0f;
 			azaFilterDataInit(&highPassData[c]);
+			// highPassData[c].header.pNext = (azaDSPData*)&reverbData[c];
+			
+			reverbData[c].gain = -12.0f;
+			reverbData[c].gainDry = 0.0f;
+			reverbData[c].roomsize = 10.0f;
+			reverbData[c].color = 0.5f;
+			reverbData[c].delay = c * 377.0f / 48000.0f;
+			azaReverbDataInit(&reverbData[c]);
 			
 			compressorData[c].threshold = -24.0f;
 			compressorData[c].ratio = 10.0f;
@@ -196,7 +207,7 @@ int main(int argumentCount, char** argumentValues) {
 			azaCompressorDataInit(&compressorData[c]);
 			
 			limiterData[c].gainInput = 12.0f;
-			limiterData[c].gainOutput = 0.0f;
+			limiterData[c].gainOutput = -6.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
 		azaSetLogCallback(logCallback);
