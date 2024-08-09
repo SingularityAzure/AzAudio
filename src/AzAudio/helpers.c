@@ -8,7 +8,7 @@
 #include <assert.h>
 
 float trif(float x) {
-	x /= 3.1415926535;
+	x /= AZA_PI;
 	while (x < 0)
 		x += 4;
 	while (x > 4)
@@ -21,7 +21,7 @@ float trif(float x) {
 }
 
 float sqrf(float x) {
-	x /= 3.1415926535;
+	x /= AZA_PI;
 	while (x < 0)
 		x += 2;
 	while (x > 2)
@@ -34,14 +34,14 @@ float sqrf(float x) {
 float sinc(float x) {
 	if (x == 0)
 		return 1.0f;
-	float temp = x * 3.1415926535;
+	float temp = x * AZA_PI;
 	return sinf(temp) / x;
 }
 
 float cosc(float x) {
 	if (x < -1.0 || x > 1.0)
 		return 0.0;
-	return cosf(x * 3.1415926535) * 0.5 + 0.5;
+	return cosf(x * AZA_PI) * 0.5 + 0.5;
 }
 
 float linc(float x) {
