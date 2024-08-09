@@ -304,13 +304,16 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 	}
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaFilterData *datum = &data[c];
+		float amount = clampf(1.0f - datum->dryMix, 0.0f, 1.0f);
+		float amountDry = clampf(datum->dryMix, 0.0f, 1.0f);
+		
 		switch (datum->kind) {
 			case AZA_FILTER_HIGH_PASS: {
 				float decay = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (size_t i = 0; i < buffer.frames; i++) {
 					size_t s = i * buffer.stride + c;
 					datum->outputs[0] = buffer.samples[s] + decay * (datum->outputs[0] - buffer.samples[s]);
-					buffer.samples[s] = buffer.samples[s] - datum->outputs[0];
+					buffer.samples[s] = (buffer.samples[s] - datum->outputs[0]) * amount + buffer.samples[s] * amountDry;
 				}
 			} break;
 			case AZA_FILTER_LOW_PASS: {
@@ -318,7 +321,7 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 				for (size_t i = 0; i < buffer.frames; i++) {
 					size_t s = i * buffer.stride + c;
 					datum->outputs[0] = buffer.samples[s] + decay * (datum->outputs[0] - buffer.samples[s]);
-					buffer.samples[s] = datum->outputs[0];
+					buffer.samples[s] = datum->outputs[0] * amount + buffer.samples[s] * amountDry;
 				}
 			} break;
 			case AZA_FILTER_BAND_PASS: {
@@ -328,7 +331,7 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 					size_t s = i * buffer.stride + c;
 					datum->outputs[0] = buffer.samples[s] + decayLow * (datum->outputs[0] - buffer.samples[s]);
 					datum->outputs[1] = datum->outputs[0] + decayHigh * (datum->outputs[1] - datum->outputs[0]);
-					buffer.samples[s] = (datum->outputs[0] - datum->outputs[1]) * 2.0f;
+					buffer.samples[s] = (datum->outputs[0] - datum->outputs[1]) * 2.0f * amount + buffer.samples[s] * amountDry;
 				}
 			} break;
 		}
@@ -372,10 +375,7 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 			overgainFactor = 0.0f;
 		}
 
-		for (size_t i = 0; i < buffer.frames; i++) {
-			size_t s = i * buffer.stride + c;
-			sideBuffer.samples[i] = buffer.samples[s];
-		}
+		azaBufferCopyChannel(sideBuffer, 0, buffer, c);
 		azaRms(sideBuffer, &datum->rmsData);
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;

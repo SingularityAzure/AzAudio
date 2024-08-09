@@ -101,9 +101,11 @@ typedef struct azaFilterData {
 	
 	// User configuration
 	
-	// Cutoff frequency in Hz
 	azaFilterKind kind;
+	// Cutoff frequency in Hz
 	float frequency;
+	// Blends the effect output with the dry signal where 1 is fully dry and 0 is fully wet.
+	float dryMix;
 } azaFilterData;
 void azaFilterDataInit(azaFilterData *data);
 int azaFilter(azaBuffer buffer, azaFilterData *data);

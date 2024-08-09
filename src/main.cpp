@@ -103,18 +103,18 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		return err;
 	}
 	// printf("gate gain: %f\n", gateData->gain);
-	if ((err = azaDelay(buffer, delayData))) {
-		return err;
-	}
-	if ((err = azaDelay(buffer, delay2Data))) {
-		return err;
-	}
+	// if ((err = azaDelay(buffer, delayData))) {
+	// 	return err;
+	// }
+	// if ((err = azaDelay(buffer, delay2Data))) {
+	// 	return err;
+	// }
 	if ((err = azaDelay(buffer, delay3Data))) {
 		return err;
 	}
-	if ((err = azaReverb(buffer, reverbData))) {
-		return err;
-	}
+	// if ((err = azaReverb(buffer, reverbData))) {
+	// 	return err;
+	// }
 	if ((err = azaFilter(buffer, highPassData))) {
 		return err;
 	}
@@ -191,6 +191,7 @@ int main(int argumentCount, char** argumentValues) {
 			
 			delayWetFilterData[c].kind = AZA_FILTER_BAND_PASS;
 			delayWetFilterData[c].frequency = 800.0f;
+			delayWetFilterData[c].dryMix = 0.5f;
 			azaFilterDataInit(&delayWetFilterData[c]);
 			
 			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
