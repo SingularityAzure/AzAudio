@@ -42,7 +42,7 @@ azaDelayData delayData[AZA_CHANNELS_DEFAULT];
 azaDelayData delay2Data[AZA_CHANNELS_DEFAULT];
 azaDelayData delay3Data[AZA_CHANNELS_DEFAULT];
 azaReverbData reverbData[AZA_CHANNELS_DEFAULT];
-azaHighPassData highPassData[AZA_CHANNELS_DEFAULT];
+azaFilterData highPassData[AZA_CHANNELS_DEFAULT];
 azaGateData gateData[AZA_CHANNELS_DEFAULT];
 
 std::vector<float> micBuffer;
@@ -80,7 +80,7 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	if ((err = azaReverb(buffer, reverbData))) {
 		return err;
 	}
-	if ((err = azaHighPass(buffer, highPassData))) {
+	if ((err = azaFilter(buffer, highPassData))) {
 		return err;
 	}
 	if ((err = azaCompressor(buffer, compressorData))) {
@@ -153,8 +153,9 @@ int main(int argumentCount, char** argumentValues) {
 			reverbData[c].delay = c * 377.0f / 48000.0f;
 			azaReverbDataInit(&reverbData[c]);
 			
-			highPassData[c].frequency = 80.0f;
-			azaHighPassDataInit(&highPassData[c]);
+			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
+			highPassData[c].frequency = 100.0f;
+			azaFilterDataInit(&highPassData[c]);
 			
 			compressorData[c].threshold = -24.0f;
 			compressorData[c].ratio = 10.0f;

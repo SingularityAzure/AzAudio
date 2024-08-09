@@ -60,6 +60,10 @@ void azaRmsDataInit(azaRmsData *data);
 int azaRms(azaBuffer buffer, azaRmsData *data);
 
 
+typedef enum azaFilterKind {
+	AZA_FILTER_HIGH_PASS,
+	AZA_FILTER_LOW_PASS,
+} azaFilterKind;
 
 typedef struct azaFilterData {
 	float output;
@@ -67,14 +71,11 @@ typedef struct azaFilterData {
 	// User configuration
 	
 	// Cutoff frequency in Hz
+	azaFilterKind kind;
 	float frequency;
 } azaFilterData;
-typedef azaFilterData azaLowPassData;
-typedef azaFilterData azaHighPassData;
-void azaLowPassDataInit(azaLowPassData *data);
-void azaHighPassDataInit(azaHighPassData *data);
-int azaLowPass(azaBuffer buffer, azaLowPassData *data);
-int azaHighPass(azaBuffer buffer, azaHighPassData *data);
+void azaFilterDataInit(azaFilterData *data);
+int azaFilter(azaBuffer buffer, azaFilterData *data);
 
 
 
@@ -150,7 +151,7 @@ int azaDelay(azaBuffer buffer, azaDelayData *data);
 #define AZAUDIO_REVERB_DELAY_COUNT 15
 typedef struct azaReverbData {
 	azaDelayData delayDatas[AZAUDIO_REVERB_DELAY_COUNT];
-	azaLowPassData lowPassDatas[AZAUDIO_REVERB_DELAY_COUNT];
+	azaFilterData filterDatas[AZAUDIO_REVERB_DELAY_COUNT];
 	
 	// User configuration
 	

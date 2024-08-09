@@ -174,15 +174,11 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 
 
 
-void azaLowPassDataInit(azaLowPassData *data) {
+void azaFilterDataInit(azaFilterData *data) {
 	data->output = 0.0f;
 }
 
-void azaHighPassDataInit(azaHighPassData *data) {
-	data->output = 0.0f;
-}
-
-int azaLowPass(azaBuffer buffer, azaLowPassData *data) {
+int azaFilter(azaBuffer buffer, azaFilterData *data) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -190,33 +186,23 @@ int azaLowPass(azaBuffer buffer, azaLowPassData *data) {
 		if (err) return err;
 	}
 	for (size_t c = 0; c < buffer.channels; c++) {
-		azaLowPassData *datum = &data[c];
-		float amount = clampf(expf(-1.0f * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
-		
-		for (size_t i = 0; i < buffer.frames; i++) {
-			size_t s = i * buffer.stride + c;
-			datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
-			buffer.samples[s] = datum->output;
-		}
-	}
-	return AZA_SUCCESS;
-}
-
-int azaHighPass(azaBuffer buffer, azaHighPassData *data) {
-	if (data == NULL) {
-		return AZA_ERROR_NULL_POINTER;
-	} else {
-		int err = azaCheckBuffer(buffer);
-		if (err) return err;
-	}
-	for (size_t c = 0; c < buffer.channels; c++) {
-		azaHighPassData *datum = &data[c];
-		float amount = clampf(expf(-8.0f * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
-		
-		for (size_t i = 0; i < buffer.frames; i++) {
-			size_t s = i * buffer.stride + c;
-			datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
-			buffer.samples[s] = buffer.samples[s] - datum->output;
+		azaFilterData *datum = &data[c];
+		float amount = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+		switch (datum->kind) {
+			case AZA_FILTER_HIGH_PASS:
+				for (size_t i = 0; i < buffer.frames; i++) {
+					size_t s = i * buffer.stride + c;
+					datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
+					buffer.samples[s] = buffer.samples[s] - datum->output;
+				}
+				break;
+			case AZA_FILTER_LOW_PASS:
+				for (size_t i = 0; i < buffer.frames; i++) {
+					size_t s = i * buffer.stride + c;
+					datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
+					buffer.samples[s] = datum->output;
+				}
+				break;
 		}
 	}
 	return AZA_SUCCESS;
@@ -368,7 +354,8 @@ void azaReverbDataInit(azaReverbData *data) {
 		data->delayDatas[i].gain = 0.0f;
 		data->delayDatas[i].gainDry = 0.0f;
 		azaDelayDataInit(&data->delayDatas[i]);
-		azaLowPassDataInit(&data->lowPassDatas[i]);
+		data->filterDatas[i].kind = AZA_FILTER_LOW_PASS;
+		azaFilterDataInit(&data->filterDatas[i]);
 	}
 }
 
@@ -398,17 +385,17 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 			float out = buffer.samples[s];
 			for (int tap = 0; tap < AZAUDIO_REVERB_DELAY_COUNT*2/3; tap++) {
 				datum->delayDatas[tap].feedback = feedback;
-				datum->lowPassDatas[tap].frequency = color;
+				datum->filterDatas[tap].frequency = color;
 				float early = buffer.samples[s];
-				azaLowPass(azaBufferOneSample(&early, buffer.samplerate), &datum->lowPassDatas[tap]);
+				azaFilter(azaBufferOneSample(&early, buffer.samplerate), &datum->filterDatas[tap]);
 				azaDelay(azaBufferOneSample(&early, buffer.samplerate), &datum->delayDatas[tap]);
 				out += (early - buffer.samples[s]) / (float)AZAUDIO_REVERB_DELAY_COUNT;
 			}
 			for (int tap = AZAUDIO_REVERB_DELAY_COUNT*2/3; tap < AZAUDIO_REVERB_DELAY_COUNT; tap++) {
 				datum->delayDatas[tap].feedback = (float)(tap+8) / (AZAUDIO_REVERB_DELAY_COUNT + 8.0f);
-				datum->lowPassDatas[tap].frequency = color*4.0f;
+				datum->filterDatas[tap].frequency = color*4.0f;
 				float diffuse = out;
-				azaLowPass(azaBufferOneSample(&diffuse, buffer.samplerate), &datum->lowPassDatas[tap]);
+				azaFilter(azaBufferOneSample(&diffuse, buffer.samplerate), &datum->filterDatas[tap]);
 				azaDelay(azaBufferOneSample(&diffuse, buffer.samplerate), &datum->delayDatas[tap]);
 				out += (diffuse - out) / (float)AZAUDIO_REVERB_DELAY_COUNT;
 			}
