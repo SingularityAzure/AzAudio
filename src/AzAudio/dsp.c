@@ -83,6 +83,56 @@ int azaBufferDeinit(azaBuffer *data) {
 
 
 
+void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc) {
+	assert(dst.frames == src.frames);
+	assert(dst.stride == src.stride);
+	assert(dst.channels == src.channels);
+	if AZA_UNLIKELY(volumeDst == 0.0f && volumeSrc == 0.0f) {
+		for (size_t i = 0; i < dst.frames*dst.channels; i++) {
+			dst.samples[i] = 0.0f;
+		}
+	} else if (volumeDst == 1.0f && volumeSrc == 1.0f) {
+		for (size_t i = 0; i < dst.frames*dst.channels; i++) {
+			dst.samples[i] = dst.samples[i] + src.samples[i];
+		}
+	} else if AZA_LIKELY(volumeDst == 1.0f) {
+		for (size_t i = 0; i < dst.frames*dst.channels; i++) {
+			dst.samples[i] = dst.samples[i] + src.samples[i] * volumeSrc;
+		}
+	} else if (volumeSrc == 1.0f) {
+		for (size_t i = 0; i < dst.frames*dst.channels; i++) {
+			dst.samples[i] = dst.samples[i] * volumeDst + src.samples[i];
+		}
+	} else {
+		for (size_t i = 0; i < dst.frames*dst.channels; i++) {
+			dst.samples[i] = dst.samples[i] * volumeDst + src.samples[i] * volumeSrc;
+		}
+	}
+}
+
+void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc) {
+	assert(dst.frames == src.frames);
+	assert(channelDst < dst.channels);
+	assert(channelSrc < src.channels);
+	if (dst.stride == 1 && src.stride == 1) {
+		memcpy(dst.samples, src.samples, sizeof(float) * dst.frames);
+	} else if (dst.stride == 1) {
+		for (size_t i = 0; i < dst.frames; i++) {
+			dst.samples[i] = src.samples[i * src.stride + channelSrc];
+		}
+	} else if (src.stride == 1) {
+		for (size_t i = 0; i < dst.frames; i++) {
+			dst.samples[i * dst.stride + channelDst] = src.samples[i];
+		}
+	} else {
+		for (size_t i = 0; i < dst.frames; i++) {
+			dst.samples[i * dst.stride + channelDst] = src.samples[i * src.stride + channelSrc];
+		}
+	}
+}
+
+
+
 int azaDSP(azaBuffer buffer, azaDSPData *data) {
 	switch (data->kind) {
 		case AZA_DSP_RMS: return azaRms(buffer, (azaRmsData*)data);
@@ -241,7 +291,8 @@ void azaFilterDataInit(azaFilterData *data) {
 	data->header.kind = AZA_DSP_FILTER;
 	data->header.structSize = sizeof(*data);
 
-	data->output = 0.0f;
+	data->outputs[0] = 0.0f;
+	data->outputs[1] = 0.0f;
 }
 
 int azaFilter(azaBuffer buffer, azaFilterData *data) {
@@ -253,22 +304,33 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 	}
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaFilterData *datum = &data[c];
-		float amount = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 		switch (datum->kind) {
-			case AZA_FILTER_HIGH_PASS:
+			case AZA_FILTER_HIGH_PASS: {
+				float decay = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (size_t i = 0; i < buffer.frames; i++) {
 					size_t s = i * buffer.stride + c;
-					datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
-					buffer.samples[s] = buffer.samples[s] - datum->output;
+					datum->outputs[0] = buffer.samples[s] + decay * (datum->outputs[0] - buffer.samples[s]);
+					buffer.samples[s] = buffer.samples[s] - datum->outputs[0];
 				}
-				break;
-			case AZA_FILTER_LOW_PASS:
+			} break;
+			case AZA_FILTER_LOW_PASS: {
+				float decay = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (size_t i = 0; i < buffer.frames; i++) {
 					size_t s = i * buffer.stride + c;
-					datum->output = buffer.samples[s] + amount * (datum->output - buffer.samples[s]);
-					buffer.samples[s] = datum->output;
+					datum->outputs[0] = buffer.samples[s] + decay * (datum->outputs[0] - buffer.samples[s]);
+					buffer.samples[s] = datum->outputs[0];
 				}
-				break;
+			} break;
+			case AZA_FILTER_BAND_PASS: {
+				float decayLow = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				float decayHigh = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				for (size_t i = 0; i < buffer.frames; i++) {
+					size_t s = i * buffer.stride + c;
+					datum->outputs[0] = buffer.samples[s] + decayLow * (datum->outputs[0] - buffer.samples[s]);
+					datum->outputs[1] = datum->outputs[0] + decayHigh * (datum->outputs[1] - datum->outputs[0]);
+					buffer.samples[s] = (datum->outputs[0] - datum->outputs[1]) * 2.0f;
+				}
+			} break;
 		}
 	}
 	if (data->header.pNext) {
@@ -470,6 +532,9 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
+	azaBuffer sideBufferCombined = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
+	azaBuffer sideBufferEarly = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
+	azaBuffer sideBufferDiffuse = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaReverbData *datum = &data[c];
 		float feedback = 0.985f - (0.2f / datum->roomsize);
@@ -477,29 +542,31 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 		float amount = aza_db_to_ampf(datum->gain);
 		float amountDry = aza_db_to_ampf(datum->gainDry);
 
+		memset(sideBufferCombined.samples, 0, sizeof(float) * buffer.frames);
+		for (int tap = 0; tap < AZAUDIO_REVERB_DELAY_COUNT*2/3; tap++) {
+			datum->delayDatas[tap].feedback = feedback;
+			datum->filterDatas[tap].frequency = color;
+			azaBufferCopyChannel(sideBufferEarly, 0, buffer, c);
+			azaFilter(sideBufferEarly, &datum->filterDatas[tap]);
+			azaDelay(sideBufferEarly, &datum->delayDatas[tap]);
+			azaBufferMix(sideBufferCombined, 1.0f, sideBufferEarly, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
+		}
+		for (int tap = AZAUDIO_REVERB_DELAY_COUNT*2/3; tap < AZAUDIO_REVERB_DELAY_COUNT; tap++) {
+			datum->delayDatas[tap].feedback = (float)(tap+8) / (AZAUDIO_REVERB_DELAY_COUNT + 8.0f);
+			datum->filterDatas[tap].frequency = color*4.0f;
+			azaBufferCopyChannel(sideBufferDiffuse, 0, sideBufferCombined, 0);
+			azaFilter(sideBufferDiffuse, &datum->filterDatas[tap]);
+			azaDelay(sideBufferDiffuse, &datum->delayDatas[tap]);
+			azaBufferMix(sideBufferCombined, 1.0f, sideBufferDiffuse, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
+		}
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
-
-			float out = buffer.samples[s];
-			for (int tap = 0; tap < AZAUDIO_REVERB_DELAY_COUNT*2/3; tap++) {
-				datum->delayDatas[tap].feedback = feedback;
-				datum->filterDatas[tap].frequency = color;
-				float early = buffer.samples[s];
-				azaFilter(azaBufferOneSample(&early, buffer.samplerate), &datum->filterDatas[tap]);
-				azaDelay(azaBufferOneSample(&early, buffer.samplerate), &datum->delayDatas[tap]);
-				out += (early - buffer.samples[s]) / (float)AZAUDIO_REVERB_DELAY_COUNT;
-			}
-			for (int tap = AZAUDIO_REVERB_DELAY_COUNT*2/3; tap < AZAUDIO_REVERB_DELAY_COUNT; tap++) {
-				datum->delayDatas[tap].feedback = (float)(tap+8) / (AZAUDIO_REVERB_DELAY_COUNT + 8.0f);
-				datum->filterDatas[tap].frequency = color*4.0f;
-				float diffuse = out;
-				azaFilter(azaBufferOneSample(&diffuse, buffer.samplerate), &datum->filterDatas[tap]);
-				azaDelay(azaBufferOneSample(&diffuse, buffer.samplerate), &datum->delayDatas[tap]);
-				out += (diffuse - out) / (float)AZAUDIO_REVERB_DELAY_COUNT;
-			}
-			buffer.samples[s] = out * amount + buffer.samples[s] * amountDry;
+			buffer.samples[s] = sideBufferCombined.samples[i] * amount + buffer.samples[s] * amountDry;
 		}
 	}
+	azaPopSideBuffer();
+	azaPopSideBuffer();
+	azaPopSideBuffer();
 	if (data->header.pNext) {
 		return azaDSP(buffer, data->header.pNext);
 	}
@@ -608,18 +675,32 @@ void azaGateDataInit(azaGateData *data) {
 }
 
 int azaGate(azaBuffer buffer, azaGateData *data) {
+	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaGateData *datum = &data[c];
 		float t = (float)buffer.samplerate / 1000.0f;
 		float attackFactor = expf(-1.0f / (datum->attack * t));
 		float decayFactor = expf(-1.0f / (datum->decay * t));
 
+		azaBufferCopyChannel(sideBuffer, 0, buffer, c);
+		
+		if (datum->activationEffects) {
+			int err = azaDSP(sideBuffer, datum->activationEffects);
+			if (err) return err;
+		}
+		
+#if 0
+		azaBufferCopyChannel(buffer, c, sideBuffer, 0);
+		if (c == 0) {
+			azaRms(sideBuffer, &datum->rms);
+			AZA_PRINT_INFO("rms: %fdB\n", aza_amp_to_dbf(sideBuffer.samples[sideBuffer.frames-1]));
+		}
+#else
+		azaRms(sideBuffer, &datum->rms);
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
 
-			float rms = buffer.samples[s];
-			azaRms(azaBufferOneSample(&rms, buffer.samplerate), &datum->rms);
-			rms = aza_amp_to_dbf(rms);
+			float rms = aza_amp_to_dbf(sideBuffer.samples[i]);
 			if (rms < -120.0f) rms = -120.0f;
 			if (rms > datum->threshold) {
 				datum->attenuation = rms + attackFactor * (datum->attenuation - rms);
@@ -635,7 +716,9 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 			datum->gain = gain;
 			buffer.samples[s] = buffer.samples[s] * aza_db_to_ampf(gain);
 		}
+#endif
 	}
+	azaPopSideBuffer();
 	if (data->header.pNext) {
 		return azaDSP(buffer, data->header.pNext);
 	}

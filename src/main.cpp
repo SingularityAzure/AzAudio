@@ -44,7 +44,8 @@ azaDelayData delay3Data[AZA_CHANNELS_DEFAULT] = {{}};
 azaReverbData reverbData[AZA_CHANNELS_DEFAULT] = {{}};
 azaFilterData highPassData[AZA_CHANNELS_DEFAULT] = {{}};
 azaGateData gateData[AZA_CHANNELS_DEFAULT] = {{}};
-azaFilterData lowPassData[AZA_CHANNELS_DEFAULT] = {{}};
+azaFilterData gateBandPass[AZA_CHANNELS_DEFAULT] = {{}};
+azaFilterData delayWetFilterData[AZA_CHANNELS_DEFAULT] = {{}};
 
 std::vector<float> micBuffer;
 size_t lastOutputBufferSize=0;
@@ -95,28 +96,28 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		buffer.samples[i] = lastSample;
 	}
 	int err;
-	// if ((err = azaFilter(buffer, lowPassData))) {
+	// if ((err = azaFilter(buffer, delayWetFilterData))) {
 	// 	return err;
 	// }
 	if ((err = azaGate(buffer, gateData))) {
 		return err;
 	}
 	// printf("gate gain: %f\n", gateData->gain);
-	// if ((err = azaDelay(buffer, delayData))) {
-	// 	return err;
-	// }
-	// if ((err = azaDelay(buffer, delay2Data))) {
-	// 	return err;
-	// }
+	if ((err = azaDelay(buffer, delayData))) {
+		return err;
+	}
+	if ((err = azaDelay(buffer, delay2Data))) {
+		return err;
+	}
 	if ((err = azaDelay(buffer, delay3Data))) {
 		return err;
 	}
 	if ((err = azaReverb(buffer, reverbData))) {
 		return err;
 	}
-	// if ((err = azaFilter(buffer, highPassData))) {
-	// 	return err;
-	// }
+	if ((err = azaFilter(buffer, highPassData))) {
+		return err;
+	}
 	if ((err = azaCompressor(buffer, compressorData))) {
 		return err;
 	}
@@ -159,41 +160,44 @@ int main(int argumentCount, char** argumentValues) {
 			}
 		}
 		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
-			gateData[c].threshold = -24.0f;
+			gateData[c].threshold = -30.0f;
 			gateData[c].attack = 10.0f;
-			gateData[c].decay = 1000.0f;
+			gateData[c].decay = 500.0f;
 			azaGateDataInit(&gateData[c]);
+			gateData[c].activationEffects = (azaDSPData*)&gateBandPass[c];
 			
-			delayData[c].gain = -12.0f;
+			gateBandPass[c].kind = AZA_FILTER_BAND_PASS;
+			gateBandPass[c].frequency = 300.0f;
+			azaFilterDataInit(&gateBandPass[c]);
+			
+			delayData[c].gain = -15.0f;
 			delayData[c].gainDry = 0.0f;
 			delayData[c].delay = 1234.5f;
 			delayData[c].feedback = 0.5f;
 			azaDelayDataInit(&delayData[c]);
 			 
-			delay2Data[c].gain = -12.0f;
+			delay2Data[c].gain = -15.0f;
 			delay2Data[c].gainDry = 0.0f;
 			delay2Data[c].delay = 2345.6f;
 			delay2Data[c].feedback = 0.5f;
 			azaDelayDataInit(&delay2Data[c]);
 			
-			delay3Data[c].gain = -3.0f;
-			delay3Data[c].gainDry = -3.0f;
-			delay3Data[c].delay = 1000.0f;
-			delay3Data[c].feedback = 0.95f;
+			delay3Data[c].gain = -15.0f;
+			delay3Data[c].gainDry = 0.0f;
+			delay3Data[c].delay = 1000.0f / 3.0f;
+			delay3Data[c].feedback = 0.98f;
 			azaDelayDataInit(&delay3Data[c]);
-			delay3Data[c].wetEffects = (azaDSPData*)&lowPassData[c];
+			delay3Data[c].wetEffects = (azaDSPData*)&delayWetFilterData[c];
 			
-			lowPassData[c].kind = AZA_FILTER_LOW_PASS;
-			lowPassData[c].frequency = 1000.0f;
-			azaFilterDataInit(&lowPassData[c]);
-			lowPassData[c].header.pNext = (azaDSPData*)&highPassData[c];
+			delayWetFilterData[c].kind = AZA_FILTER_BAND_PASS;
+			delayWetFilterData[c].frequency = 800.0f;
+			azaFilterDataInit(&delayWetFilterData[c]);
 			
 			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
-			highPassData[c].frequency = 1000.0f;
+			highPassData[c].frequency = 50.0f;
 			azaFilterDataInit(&highPassData[c]);
-			// highPassData[c].header.pNext = (azaDSPData*)&reverbData[c];
 			
-			reverbData[c].gain = -12.0f;
+			reverbData[c].gain = -15.0f;
 			reverbData[c].gainDry = 0.0f;
 			reverbData[c].roomsize = 10.0f;
 			reverbData[c].color = 0.5f;

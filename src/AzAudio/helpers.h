@@ -57,6 +57,16 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 
 static const float AZA_TAU = 6.283185307179586f;
 
+#ifndef AZA_LIKELY
+#ifdef __GNUC__
+#define AZA_LIKELY(x) (__builtin_expect(!!(x),1))
+#define AZA_UNLIKELY(x) (__builtin_expect(!!(x),0))
+#else
+#define AZA_LIKELY(x) (x)
+#define AZA_UNLIKELY(x) (x)
+#endif
+#endif
+
 #ifdef __cplusplus
 }
 #endif

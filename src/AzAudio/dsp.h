@@ -41,6 +41,12 @@ typedef struct azaBuffer {
 int azaBufferInit(azaBuffer *data);
 int azaBufferDeinit(azaBuffer *data);
 
+// Mixes src into the existing contents of dst
+void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc);
+
+// Copies the contents of one channel of src into dst
+void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc);
+
 static inline azaBuffer azaBufferOneSample(float *sample, size_t samplerate) {
 	return (azaBuffer) {
 		.samples = sample,
@@ -86,11 +92,12 @@ int azaRms(azaBuffer buffer, azaRmsData *data);
 typedef enum azaFilterKind {
 	AZA_FILTER_HIGH_PASS,
 	AZA_FILTER_LOW_PASS,
+	AZA_FILTER_BAND_PASS,
 } azaFilterKind;
 
 typedef struct azaFilterData {
 	azaDSPData header;
-	float output;
+	float outputs[2];
 	
 	// User configuration
 	
@@ -236,6 +243,8 @@ typedef struct azaGateData {
 	float attack;
 	// decay time in ms
 	float decay;
+	// Any effects to apply to the activation signal
+	azaDSPData *activationEffects;
 } azaGateData;
 void azaGateDataInit(azaGateData *data);
 int azaGate(azaBuffer buffer, azaGateData *data);
