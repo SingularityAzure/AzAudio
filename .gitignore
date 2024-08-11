@@ -1,7 +1,5 @@
-# ignore .o object files and .a library files
-*.[oa]
-# ignore Atom's symbols files
-*.gch
+build*
+.vscode
 *.log
 
 # don't include generated binaries

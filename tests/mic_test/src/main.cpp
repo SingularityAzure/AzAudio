@@ -140,11 +140,15 @@ int mixCallbackInput(azaBuffer buffer, void *userData) {
 }
 
 int main(int argumentCount, char** argumentValues) {
+	using a_fit = std::runtime_error;
 	#ifdef __unix
 	signal(SIGSEGV, handler);
 	#endif
 	try {
-		azaInit();
+		int err = azaInit();
+		if (err) {
+			throw a_fit("Failed to azaInit!");
+		}
 		{ // Query devices
 			size_t numOutputDevices = azaGetDeviceCount(AZA_OUTPUT);
 			sys::cout << "Output Devices: " << numOutputDevices << std::endl;
@@ -165,52 +169,52 @@ int main(int argumentCount, char** argumentValues) {
 			gateData[c].decay = 500.0f;
 			azaGateDataInit(&gateData[c]);
 			gateData[c].activationEffects = (azaDSPData*)&gateBandPass[c];
-			
+
 			gateBandPass[c].kind = AZA_FILTER_BAND_PASS;
 			gateBandPass[c].frequency = 300.0f;
 			azaFilterDataInit(&gateBandPass[c]);
-			
+
 			delayData[c].gain = -15.0f;
 			delayData[c].gainDry = 0.0f;
 			delayData[c].delay = 1234.5f;
 			delayData[c].feedback = 0.5f;
 			azaDelayDataInit(&delayData[c]);
-			 
+
 			delay2Data[c].gain = -15.0f;
 			delay2Data[c].gainDry = 0.0f;
 			delay2Data[c].delay = 2345.6f;
 			delay2Data[c].feedback = 0.5f;
 			azaDelayDataInit(&delay2Data[c]);
-			
+
 			delay3Data[c].gain = -15.0f;
 			delay3Data[c].gainDry = 0.0f;
 			delay3Data[c].delay = 1000.0f / 3.0f;
 			delay3Data[c].feedback = 0.98f;
 			azaDelayDataInit(&delay3Data[c]);
 			delay3Data[c].wetEffects = (azaDSPData*)&delayWetFilterData[c];
-			
+
 			delayWetFilterData[c].kind = AZA_FILTER_BAND_PASS;
 			delayWetFilterData[c].frequency = 800.0f;
 			delayWetFilterData[c].dryMix = 0.5f;
 			azaFilterDataInit(&delayWetFilterData[c]);
-			
+
 			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
 			highPassData[c].frequency = 50.0f;
 			azaFilterDataInit(&highPassData[c]);
-			
+
 			reverbData[c].gain = -15.0f;
 			reverbData[c].gainDry = 0.0f;
 			reverbData[c].roomsize = 10.0f;
 			reverbData[c].color = 0.5f;
 			reverbData[c].delay = c * 377.0f / 48000.0f;
 			azaReverbDataInit(&reverbData[c]);
-			
+
 			compressorData[c].threshold = -24.0f;
 			compressorData[c].ratio = 10.0f;
 			compressorData[c].attack = 100.0f;
 			compressorData[c].decay = 200.0f;
 			azaCompressorDataInit(&compressorData[c]);
-			
+
 			limiterData[c].gainInput = 12.0f;
 			limiterData[c].gainOutput = -6.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
@@ -220,12 +224,12 @@ int main(int argumentCount, char** argumentValues) {
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;
 		if (azaStreamInit(&streamInput, "default") != AZA_SUCCESS) {
-			throw std::runtime_error("Failed to init input stream!");
+			throw a_fit("Failed to init input stream!");
 		}
 		azaStream streamOutput = {0};
 		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamOutput, "default") != AZA_SUCCESS) {
-			throw std::runtime_error("Failed to init output stream!");
+			throw a_fit("Failed to init output stream!");
 		}
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
@@ -235,7 +239,7 @@ int main(int argumentCount, char** argumentValues) {
 			azaDelayDataDeinit(&delayData[c]);
 			azaReverbDataDeinit(&reverbData[c]);
 		}
-		
+
 		azaDeinit();
 	} catch (std::runtime_error& e) {
 		sys::cout << "Runtime Error: " << e.what() << std::endl;

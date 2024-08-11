@@ -56,7 +56,7 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 #define AZA_SAMPLES_TO_MS(samples, samplerate) ((float)(samples) / (float)(samplerate) * 1000.0f)
 
 static const float AZA_TAU = 6.283185307179586f;
-static const float AZA_PI = AZA_TAU/2.0f;
+static const float AZA_PI = 3.14159265359f;
 
 #ifndef AZA_LIKELY
 #ifdef __GNUC__

@@ -43,6 +43,7 @@ int azaBackendInit() {
 		AZA_PRINT_INFO("AzAudio will use backend \"Wintendo >.>\"\n");
 #endif
 	} else {
+		AZA_PRINT_ERR("No backends available :(\n");
 		return AZA_ERROR_BACKEND_UNAVAILABLE;
 	}
 	return AZA_SUCCESS;

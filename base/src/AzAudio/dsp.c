@@ -8,14 +8,21 @@
 #include "error.h"
 #include "helpers.h"
 
+#ifdef _WIN32
+#define AZAUDIO_NO_THREADS_H
+#define thread_local
+#endif
+
 #include <stdlib.h>
 #include <string.h>
+#ifndef AZAUDIO_NO_THREADS_H
 #include <threads.h>
+#endif
 #include <assert.h>
 
 
 #define AZA_MAX_SIDE_BUFFERS 64
-thread_local azaBuffer sideBufferPool[AZA_MAX_SIDE_BUFFERS] = {{}};
+thread_local azaBuffer sideBufferPool[AZA_MAX_SIDE_BUFFERS] = {{0}};
 thread_local size_t sideBufferCapacity[AZA_MAX_SIDE_BUFFERS] = {0};
 thread_local size_t sideBuffersInUse = 0;
 
@@ -199,7 +206,7 @@ static float azaCubicLimiterSample(float sample) {
 		sample = -1.0f;
 	else
 		sample = sample;
-	sample = 1.5 * sample - 0.5f * sample * sample * sample;
+	sample = 1.5f * sample - 0.5f * sample * sample * sample;
 	return sample;
 }
 
@@ -306,7 +313,7 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 		azaFilterData *datum = &data[c];
 		float amount = clampf(1.0f - datum->dryMix, 0.0f, 1.0f);
 		float amountDry = clampf(datum->dryMix, 0.0f, 1.0f);
-		
+
 		switch (datum->kind) {
 			case AZA_FILTER_HIGH_PASS: {
 				float decay = clampf(expf(-AZA_TAU * (datum->frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
@@ -379,7 +386,7 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 		azaRms(sideBuffer, &datum->rmsData);
 		for (size_t i = 0; i < buffer.frames; i++) {
 			size_t s = i * buffer.stride + c;
-			
+
 			float rms = aza_amp_to_dbf(sideBuffer.samples[i]);
 			if (rms < -120.0f) rms = -120.0f;
 			if (rms > datum->attenuation) {
@@ -456,7 +463,7 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	for (size_t c = 0; c < buffer.channels; c++) {
 		azaDelayData *datum = &data[c];
-		size_t delaySamples = aza_ms_to_samples(datum->delay, buffer.samplerate);
+		size_t delaySamples = aza_ms_to_samples(datum->delay, (float)buffer.samplerate);
 		azaDelayDataHandleBufferResizes(datum, delaySamples);
 		float amount = aza_db_to_ampf(datum->gain);
 		float amountDry = aza_db_to_ampf(datum->gainDry);
@@ -626,7 +633,7 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 			if (speed <= 1.0f) {
 				// Cubic
 				float abcd[4];
-				int ii = (int)datum->frame + datum->buffer->frames - 2;
+				int ii = (int)datum->frame + (int)datum->buffer->frames - 2;
 				for (int i = 0; i < 4; i++) {
 					abcd[i] = datum->buffer->samples[ii++ % datum->buffer->frames];
 				}
@@ -683,12 +690,12 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 		float decayFactor = expf(-1.0f / (datum->decay * t));
 
 		azaBufferCopyChannel(sideBuffer, 0, buffer, c);
-		
+
 		if (datum->activationEffects) {
 			int err = azaDSP(sideBuffer, datum->activationEffects);
 			if (err) return err;
 		}
-		
+
 #if 0
 		azaBufferCopyChannel(buffer, c, sideBuffer, 0);
 		if (c == 0) {

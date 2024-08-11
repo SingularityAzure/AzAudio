@@ -14,10 +14,10 @@ float trif(float x) {
 	while (x > 4)
 		x -= 4;
 	if (x > 3)
-		return 4.0 - x;
+		return 4 - x;
 	if (x < 1)
 		return -x;
-	return x - 2.0;
+	return x - 2;
 }
 
 float sqrf(float x) {
@@ -39,9 +39,9 @@ float sinc(float x) {
 }
 
 float cosc(float x) {
-	if (x < -1.0 || x > 1.0)
-		return 0.0;
-	return cosf(x * AZA_PI) * 0.5 + 0.5;
+	if (x < -1.0f || x > 1.0f)
+		return 0.0f;
+	return cosf(x * AZA_PI) * 0.5f + 0.5f;
 }
 
 float linc(float x) {
@@ -54,7 +54,7 @@ float linc(float x) {
 }
 
 float cubic(float a, float b, float c, float d, float x) {
-	return b + 0.5 * x * (c - a + x * (2 * a - 5 * b + 4 * c - d + x * (3 * (b - c) + d - a)));
+	return b + 0.5f * x * (c - a + x * (2 * a - 5 * b + 4 * c - d + x * (3 * (b - c) + d - a)));
 }
 
 size_t aza_grow(size_t startSize, size_t minSize, size_t alignment) {
@@ -80,7 +80,7 @@ float aza_amp_to_dbf(float amp) {
 }
 
 size_t aza_ms_to_samples(float ms, float samplerate) {
-	return ms * samplerate * 0.001f;
+	return (size_t)(ms * samplerate * 0.001f);
 }
 
 size_t aza_align(size_t size, size_t alignment) {

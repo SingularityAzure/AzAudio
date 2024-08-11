@@ -12,6 +12,9 @@
 
 #ifdef __cplusplus
 extern "C" {
+#define AZA_CLITERAL(s) s
+#else
+#define AZA_CLITERAL(s) (s)
 #endif
 
 #define AZAUDIO_RMS_SAMPLES 128
@@ -48,7 +51,7 @@ void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc
 void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc);
 
 static inline azaBuffer azaBufferOneSample(float *sample, size_t samplerate) {
-	return (azaBuffer) {
+	return AZA_CLITERAL(azaBuffer) {
 		.samples = sample,
 		.frames = 1,
 		.stride = 1,
@@ -98,9 +101,9 @@ typedef enum azaFilterKind {
 typedef struct azaFilterData {
 	azaDSPData header;
 	float outputs[2];
-	
+
 	// User configuration
-	
+
 	azaFilterKind kind;
 	// Cutoff frequency in Hz
 	float frequency;
@@ -123,9 +126,9 @@ typedef struct azaLookaheadLimiterData {
 	float valBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
 	int index;
 	float sum;
-	
+
 	// User configuration
-	
+
 	// input gain in dB
 	float gainInput;
 	// output gain in dB (should never peak higher than this)
@@ -141,9 +144,9 @@ typedef struct azaCompressorData {
 	azaRmsData rmsData;
 	float attenuation;
 	float gain; // For monitoring/debugging
-	
+
 	// User configuration
-	
+
 	// Activation threshold in dB
 	float threshold;
 	// positive values allow 1/ratio of the overvolume through
@@ -166,9 +169,9 @@ typedef struct azaDelayData {
 	// Needs to be kept track of to handle the resizing of buffer gracefully
 	size_t delaySamples;
 	size_t index;
-	
+
 	// User configuration
-	
+
 	// effect gain in dB
 	float gain;
 	// dry gain in dB
@@ -191,9 +194,9 @@ typedef struct azaReverbData {
 	azaDSPData header;
 	azaDelayData delayDatas[AZAUDIO_REVERB_DELAY_COUNT];
 	azaFilterData filterDatas[AZAUDIO_REVERB_DELAY_COUNT];
-	
+
 	// User configuration
-	
+
 	// effect gain in dB
 	float gain;
 	// dry gain in dB
@@ -216,9 +219,9 @@ typedef struct azaSamplerData {
 	float frame;
 	float s; // Smooth speed
 	float g; // Smooth gain
-	
+
 	// User configuration
-	
+
 	// buffer containing the sound we're sampling
 	azaBuffer *buffer;
 	// playback speed as a multiple where 1 is full speed
@@ -236,9 +239,9 @@ typedef struct azaGateData {
 	azaRmsData rms;
 	float attenuation;
 	float gain;
-	
+
 	// User configuration
-	
+
 	// cutoff threshold in dB
 	float threshold;
 	// attack time in ms
