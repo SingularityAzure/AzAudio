@@ -52,11 +52,11 @@ void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_
 
 static inline azaBuffer azaBufferOneSample(float *sample, size_t samplerate) {
 	return AZA_CLITERAL(azaBuffer) {
-		.samples = sample,
-		.frames = 1,
-		.stride = 1,
-		.channels = 1,
-		.samplerate = samplerate,
+		/* .samples = */ sample,
+		/* .frames = */ 1,
+		/* .stride = */ 1,
+		/* .channels = */ 1,
+		/* .samplerate = */ samplerate,
 	};
 }
 

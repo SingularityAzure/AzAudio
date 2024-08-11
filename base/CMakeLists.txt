@@ -31,7 +31,7 @@ target_include_directories(AzAudio PUBLIC
 )
 
 if (CMAKE_SYSTEM MATCHES Linux)
-	target_link_libraries(AzCore INTERFACE pthread)
+	target_link_libraries(AzAudio INTERFACE pthread)
 
 	find_package(PkgConfig REQUIRED)
 	pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
