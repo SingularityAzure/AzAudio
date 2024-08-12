@@ -8,9 +8,10 @@
 #include "error.h"
 #include "helpers.h"
 
-#ifdef _WIN32
+// Good ol' MSVC causing problems like always. Never change, MSVC... never change.
+#ifdef _MSC_VER
 #define AZAUDIO_NO_THREADS_H
-#define thread_local
+#define thread_local __declspec( thread )
 #endif
 
 #include <stdlib.h>

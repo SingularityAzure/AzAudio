@@ -112,13 +112,13 @@ static void azaPipewireFlush() {
 		.done = azaCoreDone,
 	};
 	struct spa_hook core_listener;
-	
+
 	fp_pw_thread_loop_lock(loop);
 	flushSynced = AZA_FALSE;
-	
+
 	pw_core_add_listener(core, &core_listener, &core_events, NULL);
 	flushSeq = pw_core_sync(core, PW_ID_CORE, 0);
-	
+
 	do {
 		fp_pw_thread_loop_unlock(loop);
 		struct timespec timespec = {
@@ -128,9 +128,9 @@ static void azaPipewireFlush() {
 		thrd_sleep(&timespec, NULL);
 		fp_pw_thread_loop_lock(loop);
 	} while (!flushSynced);
-	
+
 	spa_hook_remove(&core_listener);
-	
+
 	fp_pw_thread_loop_unlock(loop);
 }
 
@@ -239,7 +239,7 @@ static void azaNodeInfo(void *data, const struct pw_node_info *info) {
 		AZA_PRINT_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
 #endif
 	}
-	
+
 	if (isOutput) {
 		// AZA_PRINT_INFO("Found output device: \"%s\"\n", nodeInfo.node_description);
 		azaNodeEmplace(nodeOutput, &nodeOutputCount, nodeInfo);
@@ -426,7 +426,7 @@ static int azaPipewireInit() {
 	pw_registry_add_listener(registry, &registry_listener, &registry_events, NULL);
 
 	fp_pw_thread_loop_start(loop);
-	
+
 	azaPipewireFlush();
 	return AZA_SUCCESS;
 }
@@ -481,10 +481,10 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 			return AZA_ERROR_INVALID_CONFIGURATION;
 			break;
 	}
-	
+
 	size_t channelsDefault = AZA_CHANNELS_DEFAULT;
 	size_t samplerateDefault = AZA_SAMPLERATE_DEFAULT;
-	
+
 	struct azaNodeInfo *deviceNodeInfo = NULL;
 	// Search the nodes for the device name
 	for (size_t i = 0; i < deviceNodeCount; i++){
@@ -511,7 +511,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 			AZA_PRINT_INFO("Chose device by priority: \"%s\"\n", deviceNodeInfo->node_description);
 		}
 	}
-	
+
 	struct pw_properties *properties;
 	if (deviceNodeInfo) {
 		properties = fp_pw_properties_new(
@@ -533,12 +533,12 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 			NULL
 		);
 	}
-	
+
 	if (stream->channels == 0)
 		stream->channels = channelsDefault;
 	if (stream->samplerate == 0)
 		stream->samplerate = samplerateDefault;
-	
+
 	data->stream = fp_pw_stream_new_simple(
 		fp_pw_thread_loop_get_loop(loop),
 		streamName,
@@ -572,12 +572,8 @@ static void azaStreamDeinitPipewire(azaStream *stream) {
 
 static size_t azaGetDeviceCountPipewire(azaDeviceInterface interface) {
 	switch (interface) {
-		case AZA_OUTPUT:
-			return nodeOutputCount;
-			break;
-		case AZA_INPUT:
-			return nodeInputCount;
-			break;
+		case AZA_OUTPUT: return nodeOutputCount;
+		case AZA_INPUT: return nodeInputCount;
 		default: return 0;
 	}
 }

@@ -17,7 +17,8 @@ typedef enum azaBackend {
 	AZA_BACKEND_JACK,
 	AZA_BACKEND_ALSA,
 #elif defined(_WIN32)
-	AZA_BACKEND_WINTENDO,
+	AZA_BACKEND_WASAPI,
+	AZA_BACKEND_XAUDIO2,
 #endif
 } azaBackend;
 static azaBackend backend = AZA_BACKEND_NONE;
@@ -38,9 +39,12 @@ int azaBackendInit() {
 		backend = AZA_BACKEND_ALSA;
 		AZA_PRINT_INFO("AzAudio will use backend \"ALSA\"\n");
 #elif defined(_WIN32)
-	} else if (AZA_SUCCESS == azaBackendWintendoInit()) {
-		backend = AZA_BACKEND_WINTENDO;
-		AZA_PRINT_INFO("AzAudio will use backend \"Wintendo >.>\"\n");
+	} else if (AZA_SUCCESS == azaBackendWASAPIInit()) {
+		backend = AZA_BACKEND_WASAPI;
+		AZA_PRINT_INFO("AzAudio will use backend \"WASAPI\"\n");
+	} else if (AZA_SUCCESS == azaBackendXAudio2Init()) {
+		backend = AZA_BACKEND_XAUDIO2;
+		AZA_PRINT_INFO("AzAudio will use backend \"XAudio2\"\n");
 #endif
 	} else {
 		AZA_PRINT_ERR("No backends available :(\n");
@@ -65,8 +69,11 @@ void azaBackendDeinit() {
 			azaBackendALSADeinit();
 			break;
 #elif defined(_WIN32)
-		case AZA_BACKEND_WINTENDO:
-			azaBackendWintendoDeinit();
+		case AZA_BACKEND_WASAPI:
+			azaBackendWASAPIDeinit();
+			break;
+		case AZA_BACKEND_XAUDIO2:
+			azaBackendXAudio2Deinit();
 			break;
 #endif
 		default: break;

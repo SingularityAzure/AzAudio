@@ -1,5 +1,5 @@
 /*
-	File: wintendo.c
+	File: xaudio2.c
 	Author: Philip Haynes
 */
 
@@ -8,9 +8,9 @@
 
 // TODO: This is a stub
 
-int azaBackendWintendoInit() {
+int azaBackendXAudio2Init() {
 	return AZA_ERROR_BACKEND_UNAVAILABLE;
 }
 
-void azaBackendWintendoDeinit() {
+void azaBackendXAudio2Deinit() {
 }

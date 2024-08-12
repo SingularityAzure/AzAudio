@@ -4,7 +4,7 @@ elseif (CMAKE_SYSTEM MATCHES Linux)
 	set(TARGET_PLATFORM_NAME Linux)
 endif()
 
-file(GLOB BACKEND_SOURCES "src/AzAudio/backend/${TARGET_PLATFORM_NAME}/*.c")
+file(GLOB BACKEND_SOURCES "src/AzAudio/backend/${TARGET_PLATFORM_NAME}/*")
 
 add_library(AzAudio STATIC
 	src/AzAudio/AzAudio.h

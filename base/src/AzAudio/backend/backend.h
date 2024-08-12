@@ -7,9 +7,9 @@
 #ifndef AZAUDIO_BACKEND_H
 #define AZAUDIO_BACKEND_H
 
-#ifdef __unix
-
 // TODO: Some of these will be stubs that return 0 until their backends get implemented.
+
+#ifdef __unix
 
 int azaBackendPipewireInit();
 void azaBackendPipewireDeinit();
@@ -25,9 +25,12 @@ void azaBackendALSADeinit();
 
 #elif defined(_WIN32)
 
-// TODO: Figure out what Windows backends make sense
-int azaBackendWintendoInit();
-void azaBackendWintendoDeinit();
+int azaBackendWASAPIInit();
+void azaBackendWASAPIDeinit();
+
+// TODO: Implement XAudio2 backend
+int azaBackendXAudio2Init();
+void azaBackendXAudio2Deinit();
 
 #endif
 
