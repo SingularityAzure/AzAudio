@@ -17,6 +17,13 @@
 #undef interface
 #endif
 
+#define CHECK_RESULT(description) if (FAILED(result)) {\
+	AZA_PRINT_ERR(description " failed:%ld\n", result);\
+	goto error;\
+}
+#define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
+#define SAFE_FREE(pSomething) if ((pSomething)) { free((pSomething)); (pSomething) = NULL; }
+
 // Don't forget to free() the return value later.
 static char* wstrToCstr(WCHAR *wstr) {
 	char *cstr;
@@ -24,6 +31,56 @@ static char* wstrToCstr(WCHAR *wstr) {
 	cstr = malloc(neededSize);
 	WideCharToMultiByte(CP_UTF8, 0, wstr, -1, cstr, neededSize, NULL, NULL);
 	return cstr;
+}
+/*
+static char* PropertyStoreGetStr(IPropertyStore *pPropertyStore, const PROPERTYKEY *key) {
+	char *result;
+	HRESULT hresult;
+	PROPVARIANT propVariant;
+	PropVariantInit(&propVariant);
+	hresult = pPropertyStore->lpVtbl->GetValue(pPropertyStore, key, &propVariant);
+	CHECK_RESULT("PropertyStore::GetValue");
+	if (propVariant.vt == VT_LPWSTR) {
+		result = wstrToCstr(propVariant.pwszVal);
+	} else {
+		result = NULL;
+	}
+	PropVariantClear(&propVariant);
+	return result;
+error:
+	return NULL;
+}
+
+static unsigned PropertyStoreGetUint(IPropertyStore *pPropertyStore, const PROPERTYKEY *key) {
+	unsigned result;
+	HRESULT hresult;
+	PROPVARIANT propVariant;
+	PropVariantInit(&propVariant);
+	hresult = pPropertyStore->lpVtbl->GetValue(pPropertyStore, key, &propVariant);
+	CHECK_RESULT("PropertyStore::GetValue");
+	if (propVariant.vt == VT_UI4) {
+		result = propVariant.uintVal;
+	} else {
+		result = 0;
+	}
+	PropVariantClear(&propVariant);
+	return result;
+error:
+	return 0;
+}
+*/
+#define PROPERTY_STORE_GET(pPropertyStore, key, VT_KIND, onSuccess) {\
+	PROPVARIANT propVariant;\
+	PropVariantInit(&propVariant);\
+	result = (pPropertyStore)->lpVtbl->GetValue((pPropertyStore), &(key), &propVariant);\
+	CHECK_RESULT("PropertyStore::GetValue(" #key ")");\
+	if (propVariant.vt == (VT_KIND)) {\
+		onSuccess;\
+	} else {\
+		PropVariantClear(&propVariant);\
+		goto error;\
+	}\
+	PropVariantClear(&propVariant);\
 }
 
 static IMMDeviceEnumerator *pEnumerator = NULL;
@@ -51,12 +108,7 @@ static size_t deviceInputCount = 0;
 static azaDeviceInfo defaultOutputDevice = {0};
 static azaDeviceInfo defaultInputDevice = {0};
 
-#define CHECK_RESULT(description) if (FAILED(result)) {\
-	AZA_PRINT_ERR(description " failed:%ld\n", result);\
-	goto error;\
-}
-#define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
-#define SAFE_FREE(pSomething) if ((pSomething)) { free((pSomething)); (pSomething) = NULL; }
+
 
 static void azaWASAPIDeinit() {
 	SAFE_RELEASE(pEnumerator);
@@ -94,27 +146,25 @@ static int azaWASAPIInit() {
 		IPropertyStore *pPropertyStore;
 		WCHAR *idWStr;
 		char *name;
+		unsigned speakerConfiguration;
 		pDeviceCollection->lpVtbl->Item(pDeviceCollection, i, &pDevice);
+		device[i].pDevice = pDevice;
 		pDevice->lpVtbl->GetId(pDevice, &idWStr);
+		device[i].idWStr = idWStr;
 
 		result = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
 		CHECK_RESULT("OpenPropertyStore");
+		device[i].pPropertyStore = pPropertyStore;
+		PROPERTY_STORE_GET(pPropertyStore, PKEY_Device_FriendlyName, VT_LPWSTR, name = wstrToCstr(propVariant.pwszVal));
+		// name = PropertyStoreGetStr(pPropertyStore, &PKEY_Device_FriendlyName);
+		device[i].name = name;
+		PROPERTY_STORE_GET(pPropertyStore, PKEY_AudioEndpoint_PhysicalSpeakers, VT_UI4, speakerConfiguration = propVariant.uintVal);
+		// speakerConfiguration = PropertyStoreGetUint(pPropertyStore, &PKEY_AudioEndpoint_PhysicalSpeakers);
 
-		PROPVARIANT varName;
-		PropVariantInit(&varName);
-		result = pPropertyStore->lpVtbl->GetValue(pPropertyStore, &PKEY_Device_FriendlyName, &varName);
-		CHECK_RESULT("PropertyStore::GetValue");
-		if (varName.vt != VT_EMPTY) {
-			name = wstrToCstr(varName.pwszVal);
-		}
 		char *idCStr = wstrToCstr(idWStr);
 		AZA_PRINT_INFO("Device %u: idStr:\"%s\" name:\"%s\"\n", i, idCStr, name);
 		free(idCStr);
 
-		device[i].pDevice = pDevice;
-		device[i].pPropertyStore = pPropertyStore;
-		device[i].idWStr = idWStr;
-		device[i].name = name;
 	}
 	return AZA_SUCCESS;
 error:
