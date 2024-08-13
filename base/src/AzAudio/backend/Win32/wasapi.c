@@ -15,6 +15,10 @@
 #include <Ksmedia.h>
 #include <stringapiset.h>
 
+#include <assert.h>
+
+#define AZA_VERBOSE 0
+
 // Microsoft APIs are really stinky and smelly and dirty and leaving their dirt all over everything they touch.
 #ifdef interface
 #undef interface
@@ -24,9 +28,9 @@
 #define GUID_PRINTF_FORMAT_STR "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
 #define GUID_PRINTF_ARGS(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
 
-#define CHECK_RESULT(description) if (FAILED(result)) {\
+#define CHECK_RESULT(description, label) if (FAILED(result)) {\
 	AZA_PRINT_ERR(description " failed:%ld\n", result);\
-	goto error;\
+	goto label;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
 #define SAFE_FREE(pSomething) if ((pSomething)) { free((pSomething)); (pSomething) = NULL; }
@@ -40,19 +44,19 @@ static char* wstrToCstr(WCHAR *wstr) {
 	return cstr;
 }
 
-#define PROPERTY_STORE_GET(pPropertyStore, key, VT_KIND, onSuccess, onFail) {\
+#define PROPERTY_STORE_GET(pPropertyStore, key, VT_KIND, onSuccess, onFail, label) {\
 	PROPVARIANT propVariant;\
 	PropVariantInit(&propVariant);\
 	result = (pPropertyStore)->lpVtbl->GetValue((pPropertyStore), &(key), &propVariant);\
-	CHECK_RESULT("PropertyStore::GetValue(" #key ")\n");\
+	CHECK_RESULT("PropertyStore::GetValue(" #key ")\n", label);\
 	if (propVariant.vt == (VT_KIND)) {\
 		onSuccess;\
+		PropVariantClear(&propVariant);\
 	} else {\
 		AZA_PRINT_ERR("PropertyStore::GetValue(" #key ") vt kind is not " #VT_KIND " (was %hu)\n", propVariant.vt);\
 		PropVariantClear(&propVariant);\
 		onFail;\
 	}\
-	PropVariantClear(&propVariant);\
 }
 
 static IMMDeviceEnumerator *pEnumerator = NULL;
@@ -110,16 +114,16 @@ static void azaWASAPIDeinit() {
 static int azaWASAPIInit() {
 	HRESULT result;
 	result = CoInitialize(NULL);
-	CHECK_RESULT("CoInitialize");
+	CHECK_RESULT("CoInitialize", error);
 	result = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator, &pEnumerator);
-	CHECK_RESULT("CoCreateInstance");
+	CHECK_RESULT("CoCreateInstance", error);
 	result = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, eRender, eConsole, &defaultOutputDevice.pDevice);
-	CHECK_RESULT("GetDefaultAudioEndpoint (render)");
+	CHECK_RESULT("GetDefaultAudioEndpoint (render)", error);
 	result = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, eCapture, eConsole, &defaultInputDevice.pDevice);
-	CHECK_RESULT("GetDefaultAudioEndpoint (capture)");
+	CHECK_RESULT("GetDefaultAudioEndpoint (capture)", error);
 
 	result = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATE_ACTIVE, &pDeviceCollection);
-	CHECK_RESULT("EnumAudioEndpoints");
+	CHECK_RESULT("EnumAudioEndpoints", error);
 	UINT deviceCountUINT = 0;
 	pDeviceCollection->lpVtbl->GetCount(pDeviceCollection, &deviceCountUINT);
 	if (deviceCountUINT > AZA_MAX_DEVICES) {
@@ -129,24 +133,27 @@ static int azaWASAPIInit() {
 	deviceCount = (size_t)deviceCountUINT;
 	for (UINT i = 0; i < deviceCountUINT; i++) {
 		IMMDevice *pDevice;
+		IMMEndpoint *pEndpoint;
 		IPropertyStore *pPropertyStore;
 		WCHAR *idWStr;
 		char *name;
 		// unsigned speakerConfig;
 		WAVEFORMATEXTENSIBLE waveFormatEx;
 		pDeviceCollection->lpVtbl->Item(pDeviceCollection, i, &pDevice);
+		result = pDevice->lpVtbl->QueryInterface(pDevice, &IID_IMMEndpoint, &pEndpoint);
+		CHECK_RESULT("IMMDevice::QueryInterface(IID_IMMEndpoint)", goNext);
 		device[i].pDevice = pDevice;
 		pDevice->lpVtbl->GetId(pDevice, &idWStr);
 		device[i].idWStr = idWStr;
 
 		result = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
-		CHECK_RESULT("OpenPropertyStore");
+		CHECK_RESULT("OpenPropertyStore", goNext);
 		device[i].pPropertyStore = pPropertyStore;
 		PROPERTY_STORE_GET(pPropertyStore, PKEY_Device_FriendlyName, VT_LPWSTR,
 			// onSuccess:
 			name = wstrToCstr(propVariant.pwszVal),
 			// onFail:
-			continue
+			continue, goNext
 		);
 		device[i].name = name;
 		// PROPERTY_STORE_GET(pPropertyStore, PKEY_AudioEndpoint_PhysicalSpeakers, VT_UI4, speakerConfig = propVariant.uintVal, speakerConfig=0);
@@ -155,7 +162,7 @@ static int azaWASAPIInit() {
 			// onSuccess:
 			memcpy(&waveFormatEx, propVariant.blob.pBlobData, AZA_MIN(sizeof(waveFormatEx), propVariant.blob.cbSize)),
 			// onFail:
-			continue
+			continue, goNext
 		);
 		device[i].channels = (unsigned)waveFormatEx.Format.nChannels;
 		device[i].sampleBitDepth = (unsigned)waveFormatEx.Format.wBitsPerSample;
@@ -184,11 +191,36 @@ static int azaWASAPIInit() {
 				AZA_PRINT_ERR("Unhandled WAVEFORMATEX::wFormatTag %hu\n", waveFormatEx.Format.wFormatTag);
 				continue;
 		}
-
+		EDataFlow dataFlow;
+		result = pEndpoint->lpVtbl->GetDataFlow(pEndpoint, &dataFlow);
+		CHECK_RESULT("IMMEndpoint::GetDataFlow", goNext);
+		int render = 0, capture = 0;
+		switch (dataFlow) {
+			case eRender:
+				render = 1;
+				break;
+			case eCapture:
+				capture = 1;
+				break;
+			case eAll:
+				AZA_PRINT_INFO("Warning: Device data flow is both capture AND render, which is supposedly impossible.\n");
+				render = capture = 1;
+				break;
+		}
+		if (render) {
+			deviceOutput[deviceOutputCount++] = device[i];
+		}
+		if (capture) {
+			deviceInput[deviceInputCount++] = device[i];
+		}
+#if AZA_VERBOSE
 		char *idCStr = wstrToCstr(idWStr);
 		AZA_PRINT_INFO("Device %u:\n\tidStr: \"%s\"\n\tname: \"%s\"\n\tchannels: %u\n\tbitDepth: %u\n\tsamplerate: %zu\n\tspeakerConfig: 0x%x\n", i, idCStr, name, device[i].channels, device[i].sampleBitDepth, device[i].samplerate, device[i].speakerConfig);
 		free(idCStr);
-
+#endif
+goNext:
+		SAFE_RELEASE(pPropertyStore);
+		SAFE_RELEASE(pEndpoint);
 	}
 	return AZA_SUCCESS;
 error:
@@ -213,11 +245,31 @@ static size_t azaGetDeviceCountWASAPI(azaDeviceInterface interface) {
 }
 
 static const char* azaGetDeviceNameWASAPI(azaDeviceInterface interface, size_t index) {
-	return "Not telling >:(";
+	switch (interface) {
+		case AZA_OUTPUT:
+			assert(index < deviceOutputCount);
+			return deviceOutput[index].name;
+			break;
+		case AZA_INPUT:
+			assert(index < deviceInputCount);
+			return deviceInput[index].name;
+			break;
+		default: return 0;
+	}
 }
 
 static size_t azaGetDeviceChannelsWASAPI(azaDeviceInterface interface, size_t index) {
-	return 0;
+	switch (interface) {
+		case AZA_OUTPUT:
+			assert(index < deviceOutputCount);
+			return deviceOutput[index].channels;
+			break;
+		case AZA_INPUT:
+			assert(index < deviceInputCount);
+			return deviceInput[index].channels;
+			break;
+		default: return 0;
+	}
 }
 
 int azaBackendWASAPIInit() {
