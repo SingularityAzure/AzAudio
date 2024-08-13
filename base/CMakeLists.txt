@@ -30,7 +30,9 @@ target_include_directories(AzAudio PUBLIC
 	$<INSTALL_INTERFACE:include>
 )
 
-if (CMAKE_SYSTEM MATCHES Linux)
+if (CMAKE_SYSTEM MATCHES Windows)
+	target_link_libraries(AzAudio INTERFACE ksuser)
+elseif (CMAKE_SYSTEM MATCHES Linux)
 	target_link_libraries(AzAudio INTERFACE pthread)
 
 	find_package(PkgConfig REQUIRED)

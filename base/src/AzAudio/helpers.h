@@ -53,6 +53,8 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 
 #define AZA_MAX(a, b) ((a) > (b) ? (a) : (b))
 
+#define AZA_MIN(a, b) ((a) < (b) ? (a) : (b))
+
 #define AZA_SAMPLES_TO_MS(samples, samplerate) ((float)(samples) / (float)(samplerate) * 1000.0f)
 
 static const float AZA_TAU = 6.283185307179586f;

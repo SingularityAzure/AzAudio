@@ -4,7 +4,10 @@
 	Because Microsoft doesn't define these anywhere for some reason...
 */
 
+#include <initguid.h>
 #include <Mmdeviceapi.h>
+#include <ks.h>
+#include <ksmedia.h>
 
 const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
