@@ -28,9 +28,9 @@
 #define GUID_PRINTF_FORMAT_STR "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
 #define GUID_PRINTF_ARGS(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
 
-#define CHECK_RESULT(description, label) if (FAILED(result)) {\
-	AZA_PRINT_ERR(description " failed:%ld\n", result);\
-	goto label;\
+#define CHECK_RESULT(description, onFail) if (FAILED(hResult)) {\
+	AZA_PRINT_ERR(description " failed:%ld\n", hResult);\
+	onFail;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
 #define SAFE_FREE(pSomething) if ((pSomething)) { free((pSomething)); (pSomething) = NULL; }
@@ -44,11 +44,11 @@ static char* wstrToCstr(WCHAR *wstr) {
 	return cstr;
 }
 
-#define PROPERTY_STORE_GET(pPropertyStore, key, VT_KIND, onSuccess, onFail, label) {\
+#define PROPERTY_STORE_GET(pPropertyStore, key, VT_KIND, onSuccess, onFail) {\
 	PROPVARIANT propVariant;\
 	PropVariantInit(&propVariant);\
-	result = (pPropertyStore)->lpVtbl->GetValue((pPropertyStore), &(key), &propVariant);\
-	CHECK_RESULT("PropertyStore::GetValue(" #key ")\n", label);\
+	hResult = (pPropertyStore)->lpVtbl->GetValue((pPropertyStore), &(key), &propVariant);\
+	CHECK_RESULT("PropertyStore::GetValue(" #key ")\n", onFail);\
 	if (propVariant.vt == (VT_KIND)) {\
 		onSuccess;\
 		PropVariantClear(&propVariant);\
@@ -95,10 +95,48 @@ static size_t deviceOutputCount = 0;
 static azaDeviceInfo deviceInput[AZA_MAX_DEVICES];
 static size_t deviceInputCount = 0;
 
-static azaDeviceInfo defaultOutputDevice = {0};
-static azaDeviceInfo defaultInputDevice = {0};
+static size_t defaultOutputDevice = AZA_MAX_DEVICES;
+static size_t defaultInputDevice = AZA_MAX_DEVICES;
 
 
+
+static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCount, EDataFlow dataFlow, const char *poolTag) {
+#define FAIL_ACTION result = AZA_MAX_DEVICES; goto error
+	size_t result = AZA_MAX_DEVICES;
+	HRESULT hResult;
+	IMMDevice *pDevice;
+	IPropertyStore *pPropertyStore;
+	char *name;
+	hResult = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, dataFlow, eConsole, &pDevice);
+	CHECK_RESULT("GetDefaultAudioEndpoint", FAIL_ACTION);
+	hResult = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
+	CHECK_RESULT("OpenPropertyStore", FAIL_ACTION);
+	PROPERTY_STORE_GET(pPropertyStore, PKEY_Device_FriendlyName, VT_LPWSTR,
+		// onSuccess:
+		name = wstrToCstr(propVariant.pwszVal),
+		// onFail:
+		FAIL_ACTION
+	);
+	// Check by name
+	for (size_t i = 0; i < deviceCount; i++) {
+		if (strcmp(devicePool[i].name, name) == 0) {
+			result = i;
+			break;
+		}
+	}
+	if (result == AZA_MAX_DEVICES) {
+		AZA_PRINT_ERR("Didn't find the default %s device in our list!\n", poolTag);
+		FAIL_ACTION;
+	} else {
+		AZA_PRINT_INFO("Default %s device: \"%s\"\n", poolTag, devicePool[result].name);
+	}
+error:
+	SAFE_FREE(name);
+	SAFE_RELEASE(pPropertyStore);
+	SAFE_RELEASE(pDevice);
+	return result;
+#undef FAIL_ACTION
+}
 
 static void azaWASAPIDeinit() {
 	SAFE_RELEASE(pEnumerator);
@@ -112,18 +150,14 @@ static void azaWASAPIDeinit() {
 }
 
 static int azaWASAPIInit() {
-	HRESULT result;
-	result = CoInitialize(NULL);
-	CHECK_RESULT("CoInitialize", error);
-	result = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator, &pEnumerator);
-	CHECK_RESULT("CoCreateInstance", error);
-	result = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, eRender, eConsole, &defaultOutputDevice.pDevice);
-	CHECK_RESULT("GetDefaultAudioEndpoint (render)", error);
-	result = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, eCapture, eConsole, &defaultInputDevice.pDevice);
-	CHECK_RESULT("GetDefaultAudioEndpoint (capture)", error);
+	HRESULT hResult;
+	hResult = CoInitialize(NULL);
+	CHECK_RESULT("CoInitialize", goto error);
+	hResult = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator, &pEnumerator);
+	CHECK_RESULT("CoCreateInstance", goto error);
 
-	result = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATE_ACTIVE, &pDeviceCollection);
-	CHECK_RESULT("EnumAudioEndpoints", error);
+	hResult = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATE_ACTIVE, &pDeviceCollection);
+	CHECK_RESULT("EnumAudioEndpoints", goto error);
 	UINT deviceCountUINT = 0;
 	pDeviceCollection->lpVtbl->GetCount(pDeviceCollection, &deviceCountUINT);
 	if (deviceCountUINT > AZA_MAX_DEVICES) {
@@ -140,20 +174,20 @@ static int azaWASAPIInit() {
 		// unsigned speakerConfig;
 		WAVEFORMATEXTENSIBLE waveFormatEx;
 		pDeviceCollection->lpVtbl->Item(pDeviceCollection, i, &pDevice);
-		result = pDevice->lpVtbl->QueryInterface(pDevice, &IID_IMMEndpoint, &pEndpoint);
-		CHECK_RESULT("IMMDevice::QueryInterface(IID_IMMEndpoint)", goNext);
+		hResult = pDevice->lpVtbl->QueryInterface(pDevice, &IID_IMMEndpoint, &pEndpoint);
+		CHECK_RESULT("IMMDevice::QueryInterface(IID_IMMEndpoint)", goto goNext);
 		device[i].pDevice = pDevice;
 		pDevice->lpVtbl->GetId(pDevice, &idWStr);
 		device[i].idWStr = idWStr;
 
-		result = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
-		CHECK_RESULT("OpenPropertyStore", goNext);
+		hResult = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
+		CHECK_RESULT("OpenPropertyStore", goto goNext);
 		device[i].pPropertyStore = pPropertyStore;
 		PROPERTY_STORE_GET(pPropertyStore, PKEY_Device_FriendlyName, VT_LPWSTR,
 			// onSuccess:
 			name = wstrToCstr(propVariant.pwszVal),
 			// onFail:
-			continue, goNext
+			goto goNext
 		);
 		device[i].name = name;
 		// PROPERTY_STORE_GET(pPropertyStore, PKEY_AudioEndpoint_PhysicalSpeakers, VT_UI4, speakerConfig = propVariant.uintVal, speakerConfig=0);
@@ -162,7 +196,7 @@ static int azaWASAPIInit() {
 			// onSuccess:
 			memcpy(&waveFormatEx, propVariant.blob.pBlobData, AZA_MIN(sizeof(waveFormatEx), propVariant.blob.cbSize)),
 			// onFail:
-			continue, goNext
+			goto goNext
 		);
 		device[i].channels = (unsigned)waveFormatEx.Format.nChannels;
 		device[i].sampleBitDepth = (unsigned)waveFormatEx.Format.wBitsPerSample;
@@ -192,8 +226,8 @@ static int azaWASAPIInit() {
 				continue;
 		}
 		EDataFlow dataFlow;
-		result = pEndpoint->lpVtbl->GetDataFlow(pEndpoint, &dataFlow);
-		CHECK_RESULT("IMMEndpoint::GetDataFlow", goNext);
+		hResult = pEndpoint->lpVtbl->GetDataFlow(pEndpoint, &dataFlow);
+		CHECK_RESULT("IMMEndpoint::GetDataFlow", goto goNext);
 		int render = 0, capture = 0;
 		switch (dataFlow) {
 			case eRender:
@@ -222,6 +256,10 @@ goNext:
 		SAFE_RELEASE(pPropertyStore);
 		SAFE_RELEASE(pEndpoint);
 	}
+	defaultOutputDevice = azaFindDefaultDevice(deviceOutput, deviceOutputCount, eRender, "output");
+	if (defaultOutputDevice == AZA_MAX_DEVICES) goto error;
+	defaultInputDevice = azaFindDefaultDevice(deviceInput, deviceInputCount, eCapture, "input");
+	if (defaultInputDevice == AZA_MAX_DEVICES) goto error;
 	return AZA_SUCCESS;
 error:
 	azaWASAPIDeinit();
