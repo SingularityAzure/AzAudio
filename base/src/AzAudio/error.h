@@ -31,6 +31,7 @@ enum {
 	// A generic azaDSPData struct wasn't a valid kind
 	AZA_ERROR_INVALID_DSP_STRUCT,
 };
+extern const char *azaErrorStr[];
 
 #ifdef __cplusplus
 }

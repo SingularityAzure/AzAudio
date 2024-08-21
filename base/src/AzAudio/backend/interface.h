@@ -24,12 +24,12 @@ typedef enum azaDeviceInterface {
 
 typedef int (*fp_azaMixCallback)(azaBuffer buffer, void *userData);
 
-typedef struct {
+typedef struct azaStream {
 	// backend-specific data
 	void *data;
-	
+
 	// User configuration
-	
+
 	azaDeviceInterface deviceInterface;
 	// Leave at 0 for device default
 	size_t samplerate;

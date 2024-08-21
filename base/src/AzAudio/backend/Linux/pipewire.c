@@ -6,7 +6,6 @@
 #include "../backend.h"
 #include "../interface.h"
 #include "../../error.h"
-#include "../../AzAudio.h"
 #include "../../helpers.h"
 
 #include <dlfcn.h>
@@ -19,8 +18,6 @@
 #include <threads.h>
 
 static void *pipewireSO;
-
-#define AZA_VERBOSE 0
 
 
 // Bindings
@@ -147,10 +144,10 @@ static size_t next_port = 0;
 static void azaPortInfo(void *data, const struct pw_port_info *info) {
 	const struct spa_dict_item *item;
 
-	AZA_PRINT_INFO("port: id:%u\n", info->id);
-	AZA_PRINT_INFO("\tprops:\n");
+	AZA_LOG_INFO("port: id:%u\n", info->id);
+	AZA_LOG_INFO("\tprops:\n");
 	spa_dict_for_each(item, info->props) {
-		AZA_PRINT_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
+		AZA_LOG_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
 	}
 }
 
@@ -197,7 +194,7 @@ static void azaNodeEmplace(struct azaNodeInfo arr[], size_t *count, struct azaNo
 		}
 	}
 	if (*count >= AZA_MAX_NODES) {
-		AZA_PRINT_ERR("Tried to emplace a new azaNodeInfo but ran out of space for more!\n");
+		AZA_LOG_ERR("Tried to emplace a new azaNodeInfo but ran out of space for more!\n");
 		return;
 	}
 	arr[*count] = nodeInfo;
@@ -209,10 +206,8 @@ static void azaNodeInfo(void *data, const struct pw_node_info *info) {
 	struct azaNodeInfo nodeInfo;
 	int isOutput = AZA_FALSE, isInput = AZA_FALSE;
 	nodeInfo.object_id = info->id;
-#if AZA_VERBOSE
-	AZA_PRINT_INFO("node: id:%u\n", info->id);
-	AZA_PRINT_INFO("\tprops:\n");
-#endif
+	AZA_LOG_TRACE("node: id:%u\n", info->id);
+	AZA_LOG_TRACE("\tprops:\n");
 	spa_dict_for_each(item, info->props) {
 		if (strcmp(item->key, PW_KEY_NODE_NAME) == 0) {
 			nodeInfo.node_name = item->value;
@@ -235,16 +230,14 @@ static void azaNodeInfo(void *data, const struct pw_node_info *info) {
 				isInput = AZA_TRUE;
 			}
 		}
-#if AZA_VERBOSE
-		AZA_PRINT_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
-#endif
+		AZA_LOG_TRACE("\t\t%s: \"%s\"\n", item->key, item->value);
 	}
 
 	if (isOutput) {
-		// AZA_PRINT_INFO("Found output device: \"%s\"\n", nodeInfo.node_description);
+		// AZA_LOG_INFO("Found output device: \"%s\"\n", nodeInfo.node_description);
 		azaNodeEmplace(nodeOutput, &nodeOutputCount, nodeInfo);
 	} else if (isInput) {
-		// AZA_PRINT_INFO("Found input device: \"%s\"\n", nodeInfo.node_description);
+		// AZA_LOG_INFO("Found input device: \"%s\"\n", nodeInfo.node_description);
 		azaNodeEmplace(nodeInput, &nodeInputCount, nodeInfo);
 	}
 }
@@ -262,14 +255,14 @@ static size_t next_device = 0;
 static void azaDeviceInfo(void *data, const struct pw_device_info *info) {
 	const struct spa_dict_item *item;
 
-	AZA_PRINT_INFO("device: id:%u\n", info->id);
-	AZA_PRINT_INFO("\tprops:\n");
+	AZA_LOG_INFO("device: id:%u\n", info->id);
+	AZA_LOG_INFO("\tprops:\n");
 	spa_dict_for_each(item, info->props) {
-		AZA_PRINT_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
+		AZA_LOG_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
 	}
-	AZA_PRINT_INFO("\tparams:\n");
+	AZA_LOG_INFO("\tparams:\n");
 	for (uint32_t i = 0; i < info->n_params; i++) {
-		AZA_PRINT_INFO("\t\tid:%u flags:%x\n", info->params[i].id, info->params[i].flags);
+		AZA_LOG_INFO("\t\tid:%u flags:%x\n", info->params[i].id, info->params[i].flags);
 	}
 }
 
@@ -288,10 +281,10 @@ static size_t next_client = 0;
 static void azaClientInfo(void *data, const struct pw_client_info *info) {
 	const struct spa_dict_item *item;
 
-	AZA_PRINT_INFO("client: id:%u\n", info->id);
-	AZA_PRINT_INFO("\tprops:\n");
+	AZA_LOG_INFO("client: id:%u\n", info->id);
+	AZA_LOG_INFO("\tprops:\n");
 	spa_dict_for_each(item, info->props) {
-		AZA_PRINT_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
+		AZA_LOG_INFO("\t\t%s: \"%s\"\n", item->key, item->value);
 	}
 }
 
@@ -302,9 +295,7 @@ static const struct pw_client_events client_events = {
 */
 
 static void azaRegistryEventGlobal(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
-#if AZA_VERBOSE
-	AZA_PRINT_INFO("object: id:%u type:%s/%d\n", id, type, version);
-#endif
+	AZA_LOG_TRACE("object: id:%u type:%s/%d\n", id, type, version);
 	int addedListener = AZA_FALSE;
 	/*
 	if (strcmp(type, PW_TYPE_INTERFACE_Client) == 0) {
@@ -322,7 +313,7 @@ static void azaRegistryEventGlobal(void *data, uint32_t id, uint32_t permissions
 	*/
 	if (strcmp(type, PW_TYPE_INTERFACE_Node) == 0) {
 		if (next_node == AZA_MAX_NODES) {
-			AZA_PRINT_ERR("Ran out of node slots!\n");
+			AZA_LOG_ERR("Ran out of node slots!\n");
 		} else {
 			node[next_node] = pw_registry_bind(registry, id, type, PW_VERSION_NODE, 0);
 			pw_node_add_listener(node[next_node], &node_listener[next_node], &node_events, NULL);
@@ -417,7 +408,7 @@ static int azaPipewireInit() {
 	context = fp_pw_context_new(fp_pw_thread_loop_get_loop(loop), NULL, 0);
 	core = fp_pw_context_connect(context, NULL, 0);
 	if (!core) {
-		AZA_PRINT_ERR("azaPipewireInit error: Failed to connect context\n");
+		AZA_LOG_ERR("azaPipewireInit error: Failed to connect context\n");
 		return AZA_ERROR_BACKEND_ERROR;
 	}
 	registry = pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
@@ -445,7 +436,7 @@ static int azaPipewireDeinit() {
 
 static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 	if (stream->mixCallback == NULL) {
-		AZA_PRINT_ERR("azaStreamInitPipewire error: no mix callback provided.\n");
+		AZA_LOG_ERR("azaStreamInitPipewire error: no mix callback provided.\n");
 		return AZA_ERROR_NULL_POINTER;
 	}
 	struct azaNodeInfo *deviceNodePool = NULL;
@@ -477,7 +468,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 			deviceNodeCount = nodeInputCount;
 			break;
 		default:
-			AZA_PRINT_ERR("azaInitStream error: stream->deviceInterface (%d) is invalid.\n", stream->deviceInterface);
+			AZA_LOG_ERR("azaStreamInitPipewire error: stream->deviceInterface (%d) is invalid.\n", stream->deviceInterface);
 			return AZA_ERROR_INVALID_CONFIGURATION;
 			break;
 	}
@@ -491,7 +482,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 		struct azaNodeInfo *node = &deviceNodePool[i];
 		if (strcmp(node->node_description, device) == 0) {
 			deviceNodeInfo = node;
-			AZA_PRINT_INFO("Chose device by name: \"%s\"\n", device);
+			AZA_LOG_INFO("Chose device by name: \"%s\"\n", device);
 			break;
 		}
 	}
@@ -508,7 +499,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 		}
 		if (bestNode) {
 			deviceNodeInfo = bestNode;
-			AZA_PRINT_INFO("Chose device by priority: \"%s\"\n", deviceNodeInfo->node_description);
+			AZA_LOG_INFO("Chose device by priority: \"%s\"\n", deviceNodeInfo->node_description);
 		}
 	}
 
@@ -525,7 +516,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 		);
 		channelsDefault = deviceNodeInfo->audio_channels;
 	} else {
-		AZA_PRINT_INFO("Letting pipewire choose a device for us...\n");
+		AZA_LOG_INFO("Letting pipewire choose a device for us...\n");
 		properties = fp_pw_properties_new(
 			PW_KEY_MEDIA_TYPE, "Audio",
 			PW_KEY_MEDIA_CATEGORY, streamMediaCategory,

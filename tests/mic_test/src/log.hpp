@@ -33,6 +33,7 @@ namespace sys {
 		#endif
 
 		out();
+		~out();
 		// Because it's a template method, we have to implement it here,
 		// Or explicitly state all the versions we'll need in the .cpp
 		// For ease, I'll do it here

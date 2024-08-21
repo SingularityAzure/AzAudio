@@ -8,16 +8,17 @@
 #include "../../error.h"
 #include "../../helpers.h"
 
+#include "threads.h"
+
 #include <Mmdeviceapi.h>
 #include <mmreg.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <Ks.h>
 #include <Ksmedia.h>
 #include <stringapiset.h>
+#include <Audioclient.h>
 
 #include <assert.h>
-
-#define AZA_VERBOSE 0
 
 // Microsoft APIs are really stinky and smelly and dirty and leaving their dirt all over everything they touch.
 #ifdef interface
@@ -25,11 +26,11 @@
 #endif
 
 // This thing is horrible to look at, but works a treat!
-#define GUID_PRINTF_FORMAT_STR "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
-#define GUID_PRINTF_ARGS(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
+#define GUID_FORMAT_STR "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+#define GUID_ARGS(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
 
 #define CHECK_RESULT(description, onFail) if (FAILED(hResult)) {\
-	AZA_PRINT_ERR(description " failed:%ld\n", hResult);\
+	AZA_LOG_ERR(description " failed:%ld\n", hResult);\
 	onFail;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
@@ -53,7 +54,7 @@ static char* wstrToCstr(WCHAR *wstr) {
 		onSuccess;\
 		PropVariantClear(&propVariant);\
 	} else {\
-		AZA_PRINT_ERR("PropertyStore::GetValue(" #key ") vt kind is not " #VT_KIND " (was %hu)\n", propVariant.vt);\
+		AZA_LOG_ERR("PropertyStore::GetValue(" #key ") vt kind is not " #VT_KIND " (was %hu)\n", propVariant.vt);\
 		PropVariantClear(&propVariant);\
 		onFail;\
 	}\
@@ -125,10 +126,10 @@ static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCoun
 		}
 	}
 	if (result == AZA_MAX_DEVICES) {
-		AZA_PRINT_ERR("Didn't find the default %s device in our list!\n", poolTag);
+		AZA_LOG_ERR("Didn't find the default %s device in our list!\n", poolTag);
 		FAIL_ACTION;
 	} else {
-		AZA_PRINT_INFO("Default %s device: \"%s\"\n", poolTag, devicePool[result].name);
+		AZA_LOG_INFO("Default %s device: \"%s\"\n", poolTag, devicePool[result].name);
 	}
 error:
 	SAFE_FREE(name);
@@ -161,7 +162,7 @@ static int azaWASAPIInit() {
 	UINT deviceCountUINT = 0;
 	pDeviceCollection->lpVtbl->GetCount(pDeviceCollection, &deviceCountUINT);
 	if (deviceCountUINT > AZA_MAX_DEVICES) {
-		AZA_PRINT_INFO("System has too many devices (%u)! Only enumerating the first %u...\n", deviceCountUINT, AZA_MAX_DEVICES);
+		AZA_LOG_INFO("System has too many devices (%u)! Only enumerating the first %u...\n", deviceCountUINT, AZA_MAX_DEVICES);
 		deviceCountUINT = AZA_MAX_DEVICES;
 	}
 	deviceCount = (size_t)deviceCountUINT;
@@ -209,7 +210,7 @@ static int azaWASAPIInit() {
 				} else if (IsEqualGUID(&waveFormatEx.SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 					device[i].sampleFormat = AZA_SAMPLE_FLOAT;
 				} else {
-					AZA_PRINT_ERR("Unhandled WAVEFORMATEXTENSIBLE::SubFormat " GUID_PRINTF_FORMAT_STR "\n", GUID_PRINTF_ARGS(waveFormatEx.SubFormat));
+					AZA_LOG_ERR("Unhandled WAVEFORMATEXTENSIBLE::SubFormat " GUID_FORMAT_STR "\n", GUID_ARGS(waveFormatEx.SubFormat));
 					continue;
 				}
 				break;
@@ -222,7 +223,7 @@ static int azaWASAPIInit() {
 				device[i].sampleFormat = AZA_SAMPLE_FLOAT;
 				break;
 			default:
-				AZA_PRINT_ERR("Unhandled WAVEFORMATEX::wFormatTag %hu\n", waveFormatEx.Format.wFormatTag);
+				AZA_LOG_ERR("Unhandled WAVEFORMATEX::wFormatTag %hu\n", waveFormatEx.Format.wFormatTag);
 				continue;
 		}
 		EDataFlow dataFlow;
@@ -237,7 +238,7 @@ static int azaWASAPIInit() {
 				capture = 1;
 				break;
 			case eAll:
-				AZA_PRINT_INFO("Warning: Device data flow is both capture AND render, which is supposedly impossible.\n");
+				AZA_LOG_INFO("Warning: Device data flow is both capture AND render, which is supposedly impossible.\n");
 				render = capture = 1;
 				break;
 		}
@@ -247,11 +248,11 @@ static int azaWASAPIInit() {
 		if (capture) {
 			deviceInput[deviceInputCount++] = device[i];
 		}
-#if AZA_VERBOSE
-		char *idCStr = wstrToCstr(idWStr);
-		AZA_PRINT_INFO("Device %u:\n\tidStr: \"%s\"\n\tname: \"%s\"\n\tchannels: %u\n\tbitDepth: %u\n\tsamplerate: %zu\n\tspeakerConfig: 0x%x\n", i, idCStr, name, device[i].channels, device[i].sampleBitDepth, device[i].samplerate, device[i].speakerConfig);
-		free(idCStr);
-#endif
+		if (azaLogLevel >= AZA_LOG_LEVEL_TRACE) {
+			char *idCStr = wstrToCstr(idWStr);
+			AZA_LOG_TRACE("Device %u:\n\tidStr: \"%s\"\n\tname: \"%s\"\n\tchannels: %u\n\tbitDepth: %u\n\tsamplerate: %zu\n\tspeakerConfig: 0x%x\n", i, idCStr, name, device[i].channels, device[i].sampleBitDepth, device[i].samplerate, device[i].speakerConfig);
+			free(idCStr);
+		}
 goNext:
 		SAFE_RELEASE(pPropertyStore);
 		SAFE_RELEASE(pEndpoint);

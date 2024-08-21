@@ -7,6 +7,8 @@
 #ifndef AZAUDIO_HELPERS_H
 #define AZAUDIO_HELPERS_H
 
+#include "AzAudio.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,14 +17,9 @@
 extern "C" {
 #endif
 
-#ifndef AZAUDIO_NO_STDIO
-#include <stdio.h>
-#define AZA_PRINT_ERR(...) fprintf(stderr, __VA_ARGS__)
-#define AZA_PRINT_INFO(...) printf(__VA_ARGS__)
-#else
-#define AZA_PRINT_ERR(...) (void)
-#define AZA_PRINT_INFO(...) (void)
-#endif
+#define AZA_LOG_ERR(...) azaLog(AZA_LOG_LEVEL_ERROR, __VA_ARGS__)
+#define AZA_LOG_INFO(...) azaLog(AZA_LOG_LEVEL_INFO, __VA_ARGS__)
+#define AZA_LOG_TRACE(...) azaLog(AZA_LOG_LEVEL_TRACE, __VA_ARGS__)
 
 float trif(float x);
 
@@ -69,6 +66,8 @@ static const float AZA_PI = 3.14159265359f;
 #define AZA_UNLIKELY(x) (x)
 #endif
 #endif
+
+void azaStrToLower(char *dst, size_t dstSize, const char *src);
 
 #ifdef __cplusplus
 }

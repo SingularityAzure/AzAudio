@@ -7,6 +7,8 @@
 #include <iostream>
 #include <vector>
 
+#include <cstdarg>
+
 #include "log.hpp"
 #include "AzAudio/AzAudio.h"
 #include "AzAudio/error.h"
@@ -32,8 +34,17 @@ void handler(int sig) {
 }
 #endif
 
-void logCallback(const char* message) {
-	sys::cout << "AzAudio: " << message << std::endl;
+void logCallback(AzaLogLevel level, const char* format, ...) {
+	if (level > azaLogLevel) return;
+	char buffer[1024];
+	time_t now = time(nullptr);
+	strftime(buffer, sizeof(buffer), "%T", localtime(&now));
+	sys::cout << "AzAudio[" << buffer << "] ";
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
+	va_end(args);
+	sys::cout << buffer;
 }
 
 azaLookaheadLimiterData limiterData[AZA_CHANNELS_DEFAULT] = {{}};
@@ -145,6 +156,7 @@ int main(int argumentCount, char** argumentValues) {
 	signal(SIGSEGV, handler);
 	#endif
 	try {
+		azaSetLogCallback(logCallback);
 		int err = azaInit();
 		if (err) {
 			throw a_fit("Failed to azaInit!");
@@ -219,7 +231,6 @@ int main(int argumentCount, char** argumentValues) {
 			limiterData[c].gainOutput = -6.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
-		azaSetLogCallback(logCallback);
 		azaStream streamInput = {0};
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;

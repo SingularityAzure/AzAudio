@@ -6,6 +6,7 @@
 #include "helpers.h"
 
 #include <assert.h>
+#include <ctype.h>
 
 float trif(float x) {
 	x /= AZA_PI;
@@ -92,5 +93,12 @@ size_t aza_align_non_power_of_two(size_t size, size_t alignment) {
 		return size;
 	} else {
 		return (size/alignment+1)*alignment;
+	}
+}
+
+void azaStrToLower(char *dst, size_t dstSize, const char *src) {
+	for (int i = 0; i < dstSize; i++) {
+		dst[i] = tolower(src[i]);
+		if (src[i] == '\0') break;
 	}
 }

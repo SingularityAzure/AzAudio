@@ -13,6 +13,12 @@ namespace sys {
 			log = false;
 		}
 	}
+	out::~out() {
+		std::flush(std::cout);
+		if (log) {
+			fstream.close();
+		}
+	}
 
 	out& out::operator<<(stream_function func) {
 		func(std::cout);

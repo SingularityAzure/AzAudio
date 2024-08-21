@@ -588,7 +588,7 @@ int azaSamplerDataInit(azaSamplerData *data) {
 	data->header.structSize = sizeof(*data);
 
 	if (data->buffer == NULL) {
-		AZA_PRINT_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
+		AZA_LOG_ERR("azaSamplerDataInit error: Sampler initialized without a buffer!");
 		return AZA_ERROR_NULL_POINTER;
 	}
 	data->frame = 0;
@@ -701,7 +701,7 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 		azaBufferCopyChannel(buffer, c, sideBuffer, 0);
 		if (c == 0) {
 			azaRms(sideBuffer, &datum->rms);
-			AZA_PRINT_INFO("rms: %fdB\n", aza_amp_to_dbf(sideBuffer.samples[sideBuffer.frames-1]));
+			AZA_LOG_INFO("rms: %fdB\n", aza_amp_to_dbf(sideBuffer.samples[sideBuffer.frames-1]));
 		}
 #else
 		azaRms(sideBuffer, &datum->rms);

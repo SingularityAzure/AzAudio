@@ -28,26 +28,26 @@ int azaBackendInit() {
 #ifdef __unix
 	} else if (AZA_SUCCESS == azaBackendPipewireInit()) {
 		backend = AZA_BACKEND_PIPEWIRE;
-		AZA_PRINT_INFO("AzAudio will use backend \"Pipewire\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"Pipewire\"\n");
 	} else if (AZA_SUCCESS == azaBackendPulseAudioInit()) {
 		backend = AZA_BACKEND_PULSEAUDIO;
-		AZA_PRINT_INFO("AzAudio will use backend \"PulseAudio\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"PulseAudio\"\n");
 	} else if (AZA_SUCCESS == azaBackendJackInit()) {
 		backend = AZA_BACKEND_JACK;
-		AZA_PRINT_INFO("AzAudio will use backend \"Jack\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"Jack\"\n");
 	} else if (AZA_SUCCESS == azaBackendALSAInit()) {
 		backend = AZA_BACKEND_ALSA;
-		AZA_PRINT_INFO("AzAudio will use backend \"ALSA\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"ALSA\"\n");
 #elif defined(_WIN32)
 	} else if (AZA_SUCCESS == azaBackendWASAPIInit()) {
 		backend = AZA_BACKEND_WASAPI;
-		AZA_PRINT_INFO("AzAudio will use backend \"WASAPI\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"WASAPI\"\n");
 	} else if (AZA_SUCCESS == azaBackendXAudio2Init()) {
 		backend = AZA_BACKEND_XAUDIO2;
-		AZA_PRINT_INFO("AzAudio will use backend \"XAudio2\"\n");
+		AZA_LOG_INFO("AzAudio will use backend \"XAudio2\"\n");
 #endif
 	} else {
-		AZA_PRINT_ERR("No backends available :(\n");
+		AZA_LOG_ERR("No backends available :(\n");
 		return AZA_ERROR_BACKEND_UNAVAILABLE;
 	}
 	return AZA_SUCCESS;

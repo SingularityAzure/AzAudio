@@ -15,6 +15,21 @@
 extern "C" {
 #endif
 
+extern const unsigned short azaVersionMajor;
+extern const unsigned short azaVersionMinor;
+extern const unsigned short azaVersionPatch;
+
+#define AZA_VERSION_FORMAT_STR "%hu.%hu.%hu"
+#define AZA_VERSION_ARGS azaVersionMajor, azaVersionMinor, azaVersionPatch
+
+typedef enum AzaLogLevel {
+	AZA_LOG_LEVEL_NONE=0,
+	AZA_LOG_LEVEL_ERROR,
+	AZA_LOG_LEVEL_INFO,
+	AZA_LOG_LEVEL_TRACE,
+} AzaLogLevel;
+extern AzaLogLevel azaLogLevel;
+
 // Defaults in case querying the devices doesn't work.
 
 #ifndef AZA_SAMPLERATE_DEFAULT
@@ -33,15 +48,15 @@ extern "C" {
 int azaInit();
 void azaDeinit();
 
-void azaDefaultLogFunc(const char* message);
+void azaLogDefault(AzaLogLevel level, const char* format, ...);
 
 // We use a callback function for all message logging.
 // This allows the user to define their own logging output functions
-typedef void (*fp_azaLogCallback)(const char* message);
+typedef void (*fp_azaLogCallback)(AzaLogLevel level, const char* format, ...);
 
 void azaSetLogCallback(fp_azaLogCallback newLogFunc);
 
-extern fp_azaLogCallback azaPrint;
+extern fp_azaLogCallback azaLog;
 
 #ifdef __cplusplus
 }
