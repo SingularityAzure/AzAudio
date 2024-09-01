@@ -88,6 +88,10 @@ typedef struct azaDeviceInfo {
 	azaSampleFormat sampleFormat;
 } azaDeviceInfo;
 
+static azaThread thread = {0};
+static azaMutex mutex = {0};
+static int shouldQuit = 0;
+
 static azaDeviceInfo device[AZA_MAX_DEVICES];
 static size_t deviceCount = 0;
 
@@ -98,6 +102,132 @@ static size_t deviceInputCount = 0;
 
 static size_t defaultOutputDevice = AZA_MAX_DEVICES;
 static size_t defaultInputDevice = AZA_MAX_DEVICES;
+
+// TODO: Implement IMMNotificationClient to handle changes to audio devices
+
+typedef struct azaStreamData {
+	int isActive;
+	azaStream *stream;
+	azaDeviceInfo *deviceInfo;
+	uint32_t bufferFrames;
+	uint8_t *buffer;
+	// If our exact format matches, then this will be NULL, and you can just use buffer. Otherwise, we need to convert formats, and this serves as our processing buffer.
+	float *myBuffer;
+
+	IAudioClient *pAudioClient;
+	union {
+		IAudioRenderClient *pRenderClient;
+		IAudioCaptureClient *pCaptureClient;
+	};
+	WAVEFORMATEXTENSIBLE waveFormatExtensible;
+} azaStreamData;
+
+// This is a ridiculous amount of streams. Getting anywhere close to this is PROBABLY a misuse of this API.
+#define AZA_MAX_STREAMS 64
+
+static azaStreamData streams[AZA_MAX_STREAMS];
+static size_t streamCount;
+
+static azaStreamData* azaStreamDataGet() {
+	azaStreamData *data = NULL;
+	for (int i = 0; i < AZA_MAX_STREAMS; i++) {
+		if (!streams[i].isActive) {
+			data = &streams[i];
+		}
+	}
+	streamCount++;
+	memset(data, 0, sizeof(*data));
+	return data;
+}
+
+static void azaStreamDataFree(azaStreamData *data) {
+	if (data->isActive) {
+		data->isActive = 0;
+		streamCount--;
+		SAFE_FREE(data->myBuffer);
+	}
+}
+
+
+static void azaStreamProcess(azaStreamData *data) {
+	HRESULT hResult;
+	if (!data->isActive) return;
+
+	uint32_t numFrames;
+
+	azaStream *stream = data->stream;
+	if (stream->deviceInterface == AZA_OUTPUT) {
+		uint32_t numFramesUnread;
+		hResult = data->pAudioClient->lpVtbl->GetCurrentPadding(data->pAudioClient, &numFramesUnread);
+		numFrames = data->bufferFrames - numFramesUnread;
+		if (numFrames == 0) return;
+		AZA_LOG_TRACE("Processing %u output frames\n", numFrames);
+		hResult = data->pRenderClient->lpVtbl->GetBuffer(data->pRenderClient, numFrames, &data->buffer);
+		CHECK_RESULT("IAudioRenderClient::GetBuffer", return);
+	} else {
+		hResult = data->pCaptureClient->lpVtbl->GetNextPacketSize(data->pCaptureClient, &numFrames);
+		if (hResult == AUDCLNT_E_DEVICE_INVALIDATED) {
+			// TODO: Handle this
+			return;
+		}
+		CHECK_RESULT("IAudioCaptureClient::GetNextPacketSize", return);
+		if (numFrames == 0) return;
+		DWORD flags;
+		hResult = data->pCaptureClient->lpVtbl->GetBuffer(data->pCaptureClient, &data->buffer, &numFrames, &flags, NULL, NULL);
+		CHECK_RESULT("IAudioCaptureClient::GetBuffer", return);
+		AZA_LOG_TRACE("Processing %u input frames\n", numFrames);
+		if (data->myBuffer) {
+			// TODO: Convert the data format
+			assert(0);
+		}
+	}
+
+	float *samples = data->myBuffer ? data->myBuffer : (float*)data->buffer;
+
+	stream->mixCallback((azaBuffer){
+		.channels = stream->channels,
+		.frames = numFrames,
+		.samplerate = stream->samplerate,
+		.samples = samples,
+		.stride = stream->channels,
+	}, stream->userdata);
+
+	if (stream->deviceInterface == AZA_OUTPUT) {
+		if (data->myBuffer) {
+			// TODO: Convert the data format
+			assert(0);
+		}
+		hResult = data->pRenderClient->lpVtbl->ReleaseBuffer(data->pRenderClient, numFrames, 0);
+		CHECK_RESULT("IAudioRenderClient::ReleaseBuffer", return);
+	} else {
+		hResult = data->pCaptureClient->lpVtbl->ReleaseBuffer(data->pCaptureClient, numFrames);
+		CHECK_RESULT("IAudioCaptureClient::ReleaseBuffer", return);
+	}
+}
+
+
+static unsigned __stdcall soundThreadProc(void *userdata) {
+	HRESULT hResult;
+	hResult = CoInitialize(NULL);
+	CHECK_RESULT("soundThreadProc CoInitialize", goto error);
+
+	azaMutexLock(&mutex);
+	while (!shouldQuit) {
+		// Do the sound stuffs
+		for (int i = 0; i < AZA_MAX_STREAMS; i++) {
+			azaStreamProcess(&streams[i]);
+		}
+
+		azaMutexUnlock(&mutex);
+		// TODO: Actually time our runtime so we only sleep if we're not too busy
+		azaThreadSleep(1);
+		azaMutexLock(&mutex);
+	}
+	azaMutexUnlock(&mutex);
+	return 0;
+error:
+	return 1;
+}
 
 
 
@@ -140,13 +270,18 @@ error:
 }
 
 static void azaWASAPIDeinit() {
+	shouldQuit = 1;
+	if (azaThreadJoinable(&thread)) {
+		azaThreadJoin(&thread);
+	}
+	azaMutexDeinit(&mutex);
 	SAFE_RELEASE(pEnumerator);
 	SAFE_RELEASE(pDeviceCollection);
 	for (size_t i = 0; i < deviceCount; i++) {
 		SAFE_RELEASE(device[i].pDevice);
 		SAFE_RELEASE(device[i].pPropertyStore);
-		CoTaskMemFree(device[i].idWStr);
-		SAFE_FREE(device[i].name);
+		CoTaskMemFree((LPVOID)device[i].idWStr);
+		SAFE_FREE((void*)device[i].name);
 	}
 }
 
@@ -261,6 +396,14 @@ goNext:
 	if (defaultOutputDevice == AZA_MAX_DEVICES) goto error;
 	defaultInputDevice = azaFindDefaultDevice(deviceInput, deviceInputCount, eCapture, "input");
 	if (defaultInputDevice == AZA_MAX_DEVICES) goto error;
+
+	shouldQuit = 0;
+	azaMutexInit(&mutex);
+	if (azaThreadLaunch(&thread, soundThreadProc, NULL)) {
+		AZA_LOG_ERR("Couldn't initialize the sound thread...%d\n", errno);
+		goto error;
+	}
+
 	return AZA_SUCCESS;
 error:
 	azaWASAPIDeinit();
@@ -268,11 +411,166 @@ error:
 }
 
 static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
-	return AZA_ERROR_BACKEND_ERROR;
+	int errCode = AZA_SUCCESS;
+	azaDeviceInfo *deviceInfoDefault = NULL;
+	azaDeviceInfo *devicePool = NULL;
+	azaDeviceInfo *deviceInfo = NULL;
+	size_t deviceCount = 0;
+	azaStreamData *data = NULL;
+	WAVEFORMATEXTENSIBLE *defaultFormat = NULL;
+	if (stream->mixCallback == NULL) {
+		AZA_LOG_ERR("azaStreamInitWASAPI error: no mix callback provided.\n");
+		return AZA_ERROR_NULL_POINTER;
+	}
+	azaMutexLock(&mutex);
+	if (streamCount >= AZA_MAX_STREAMS) {
+		AZA_LOG_ERR("azaStreamInitWASAPI error: Too many streams have already been created (%d)!\n", streamCount);
+		errCode = AZA_ERROR_BACKEND_ERROR;
+		goto error;
+	}
+	data = azaStreamDataGet();
+	switch (stream->deviceInterface) {
+		case AZA_OUTPUT:
+			deviceInfoDefault = &deviceOutput[defaultOutputDevice];
+			devicePool = deviceOutput;
+			deviceCount = deviceOutputCount;
+			break;
+		case AZA_INPUT:
+			deviceInfoDefault = &deviceInput[defaultInputDevice];
+			devicePool = deviceInput;
+			deviceCount = deviceInputCount;
+			break;
+		default:
+			AZA_LOG_ERR("azaStreamInitWASAPI error: stream->deviceInterface (%d) is invalid.\n", stream->deviceInterface);
+			errCode = AZA_ERROR_INVALID_CONFIGURATION;
+			goto error;
+	}
+	if (deviceCount == 0) {
+		AZA_LOG_ERR("azaStreamInitWASAPI error: There are no %s devices available\n", stream->deviceInterface == AZA_OUTPUT ? "output" : "input");
+		errCode = AZA_ERROR_NO_DEVICES_AVAILABLE;
+		goto error;
+	}
+	// Search the nodes for the device name
+	for (size_t i = 0; i < deviceCount; i++) {
+		azaDeviceInfo *check = &devicePool[i];
+		if (strcmp(check->name, device) == 0) {
+			deviceInfo = check;
+			AZA_LOG_INFO("Chose device by name: \"%s\"\n", device);
+			break;
+		}
+	}
+	if (!deviceInfo) {
+		deviceInfo = deviceInfoDefault;
+		AZA_LOG_INFO("Chose default device: \"%s\"\n", deviceInfo->name);
+	}
+	data->deviceInfo = deviceInfo;
+#define FAIL_ACTION errCode = AZA_ERROR_BACKEND_ERROR; goto error
+	HRESULT hResult;
+	hResult = deviceInfo->pDevice->lpVtbl->Activate(deviceInfo->pDevice, &IID_IAudioClient, CLSCTX_ALL, NULL, &data->pAudioClient);
+	CHECK_RESULT("IMMDevice::Activate(IID_IAudioClient)", FAIL_ACTION);
+	// Find out if we natively support our desired format and samplerate, otherwise we have to resample and convert formats
+	hResult = data->pAudioClient->lpVtbl->GetMixFormat(data->pAudioClient, (WAVEFORMATEX**)&defaultFormat);
+	CHECK_RESULT("IAudioClient::GetMixFormat", FAIL_ACTION);
+	WAVEFORMATEXTENSIBLE desiredFormat;
+	desiredFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+	desiredFormat.Format.nChannels = stream->channels ? (WORD)stream->channels : defaultFormat->Format.nChannels;
+	desiredFormat.Format.nSamplesPerSec = stream->samplerate ? (DWORD)stream->samplerate : defaultFormat->Format.nSamplesPerSec;
+	desiredFormat.Format.wBitsPerSample = 32;
+	desiredFormat.Format.nBlockAlign = desiredFormat.Format.nChannels * 4;
+	desiredFormat.Format.nAvgBytesPerSec = desiredFormat.Format.nSamplesPerSec * desiredFormat.Format.nBlockAlign;
+	desiredFormat.Format.cbSize = sizeof(desiredFormat) - sizeof(desiredFormat.Format);
+	desiredFormat.Samples.wValidBitsPerSample = desiredFormat.Format.wBitsPerSample;
+	desiredFormat.dwChannelMask = SPEAKER_ALL;
+	desiredFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+	WAVEFORMATEXTENSIBLE closestFormat;
+	WAVEFORMATEXTENSIBLE *pClosestFormat = &closestFormat;
+	hResult = data->pAudioClient->lpVtbl->IsFormatSupported(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, (WAVEFORMATEX*)&desiredFormat, (WAVEFORMATEX**)&pClosestFormat);
+	// TODO: Probably handle the return values of IsFormatSupported (namely AUDCLNT_E_DEVICE_INVALIDATED and AUDCLNT_E_SERVICE_NOT_RUNNING)
+	CHECK_RESULT("IAudioClient::IsFormatSupported", FAIL_ACTION);
+	int exactFormat = 0;
+	if (hResult == S_FALSE) {
+		// We got a closest match which is not an exact match
+		assert(pClosestFormat != NULL);
+		AZA_LOG_INFO("Device \"%s\" doesn't support the exact format desired\n", deviceInfo->name);
+		if (closestFormat.Format.nSamplesPerSec != desiredFormat.Format.nSamplesPerSec) {
+			AZA_LOG_INFO("\tNo support for %dHz samplerate (closest was %dHz)\n", deviceInfo->name, desiredFormat.Format.nSamplesPerSec, closestFormat.Format.nSamplesPerSec);
+		}
+		if (closestFormat.Format.nChannels != desiredFormat.Format.nChannels) {
+			AZA_LOG_INFO("\tNo support for %hd channels (closest was %hd)\n", deviceInfo->name, desiredFormat.Format.nChannels, closestFormat.Format.nChannels);
+		}
+		if (closestFormat.Format.wBitsPerSample != desiredFormat.Format.wBitsPerSample) {
+			AZA_LOG_INFO("\tNo support for %hd bits per sample (closest was %hd)\n", deviceInfo->name, desiredFormat.Format.wBitsPerSample, closestFormat.Format.wBitsPerSample);
+		}
+		if (!IsEqualGUID(&closestFormat.SubFormat, &desiredFormat.SubFormat)) {
+			AZA_LOG_INFO("\tNo support for IEEE float formats\n");
+		}
+		data->waveFormatExtensible = closestFormat;
+	} else if (hResult == S_OK) {
+		// Our exact format is supported
+		data->waveFormatExtensible = desiredFormat;
+		AZA_LOG_INFO("Device \"%s\" supports the exact format desired :)\n", deviceInfo->name);
+		exactFormat = 1;
+	} else {
+		// Fallback to default
+		data->waveFormatExtensible = *defaultFormat;
+		AZA_LOG_INFO("Device \"%s\" can't compromise, falling back to default format\n", deviceInfo->name);
+	}
+	stream->channels = data->waveFormatExtensible.Format.nChannels;
+	stream->samplerate = data->waveFormatExtensible.Format.nSamplesPerSec;
+
+	hResult = data->pAudioClient->lpVtbl->Initialize(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, 0, 10000 * 25, 0, (WAVEFORMATEX*)&data->waveFormatExtensible, NULL);
+	CHECK_RESULT("IAudioClient::Initialize", FAIL_ACTION);
+	hResult = data->pAudioClient->lpVtbl->GetBufferSize(data->pAudioClient, &data->bufferFrames);
+	CHECK_RESULT("IAudioClient::GetBufferSize", FAIL_ACTION);
+	AZA_LOG_INFO("Buffer has %u frames\n", data->bufferFrames);
+	if (stream->deviceInterface == AZA_OUTPUT) {
+		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioRenderClient, &data->pRenderClient);
+		CHECK_RESULT("IAudioClient::GetService", FAIL_ACTION);
+		uint8_t *buffer;
+		hResult = data->pRenderClient->lpVtbl->GetBuffer(data->pRenderClient, data->bufferFrames, &buffer);
+		CHECK_RESULT("IAudioRenderClient::GetBuffer", FAIL_ACTION);
+		memset(buffer, 0, data->bufferFrames * data->waveFormatExtensible.Format.nBlockAlign);
+		hResult = data->pRenderClient->lpVtbl->ReleaseBuffer(data->pRenderClient, data->bufferFrames, 0);
+		CHECK_RESULT("IAudioRenderClient::ReleaseBuffer", FAIL_ACTION);
+	} else {
+		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioCaptureClient, &data->pCaptureClient);
+		CHECK_RESULT("IAudioClient::GetService", FAIL_ACTION);
+	}
+
+	hResult = data->pAudioClient->lpVtbl->Start(data->pAudioClient);
+	CHECK_RESULT("IAudioClient::Start", FAIL_ACTION);
+
+	if (!exactFormat) {
+		data->myBuffer = malloc(sizeof(float) * data->bufferFrames * stream->channels);
+	} else {
+		data->myBuffer = NULL;
+	}
+	data->stream = stream;
+	stream->data = data;
+	data->isActive = 1;
+
+	CoTaskMemFree(defaultFormat);
+	azaMutexUnlock(&mutex);
+	return AZA_SUCCESS;
+error:
+	CoTaskMemFree(defaultFormat);
+	azaStreamDataFree(data);
+	SAFE_RELEASE(data->pAudioClient);
+	SAFE_RELEASE(data->pRenderClient);
+	azaMutexUnlock(&mutex);
+	return errCode;
+#undef FAIL_ACTION
 }
 
 static void azaStreamDeinitWASAPI(azaStream *stream) {
-
+	azaMutexLock(&mutex);
+	azaStreamData *data = stream->data;
+	HRESULT hResult = data->pAudioClient->lpVtbl->Stop(data->pAudioClient);
+	CHECK_RESULT("IAudioClient::Stop", do{}while(0));
+	SAFE_RELEASE(data->pAudioClient);
+	SAFE_RELEASE(data->pRenderClient);
+	azaStreamDataFree(data);
+	azaMutexUnlock(&mutex);
 }
 
 static size_t azaGetDeviceCountWASAPI(azaDeviceInterface interface) {

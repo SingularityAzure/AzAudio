@@ -20,6 +20,8 @@ enum {
 	AZA_ERROR_BACKEND_LOAD_ERROR,
 	// A backend produced an error
 	AZA_ERROR_BACKEND_ERROR,
+	// There are no sound devices available to create a Stream
+	AZA_ERROR_NO_DEVICES_AVAILABLE,
 	// A pointer was unexpectedly null
 	AZA_ERROR_NULL_POINTER,
 	// A dsp function was given a buffer with no channels

@@ -146,7 +146,6 @@ int mixCallbackInput(azaBuffer buffer, void *userData) {
 	for (unsigned long i = 0; i < buffer.frames*buffer.channels; i++) {
 		micBuffer[b_i + i] = buffer.samples[i];
 	}
-	// printf("input has  ");
 	return AZA_SUCCESS;
 }
 
@@ -176,7 +175,7 @@ int main(int argumentCount, char** argumentValues) {
 			}
 		}
 		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
-			gateData[c].threshold = -30.0f;
+			gateData[c].threshold = -42.0f;
 			gateData[c].attack = 10.0f;
 			gateData[c].decay = 500.0f;
 			azaGateDataInit(&gateData[c]);
