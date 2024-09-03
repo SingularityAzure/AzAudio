@@ -82,6 +82,9 @@ void azaBackendDeinit() {
 
 fp_azaStreamInit azaStreamInit;
 fp_azaStreamDeinit azaStreamDeinit;
+fp_azaStreamGetDeviceName azaStreamGetDeviceName;
+fp_azaStreamGetSamplerate azaStreamGetSamplerate;
+fp_azaStreamGetChannels azaStreamGetChannels;
 fp_azaGetDeviceCount azaGetDeviceCount;
 fp_azaGetDeviceName azaGetDeviceName;
 fp_azaGetDeviceChannels azaGetDeviceChannels;

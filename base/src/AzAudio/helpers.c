@@ -36,7 +36,7 @@ float sinc(float x) {
 	if (x == 0)
 		return 1.0f;
 	float temp = x * AZA_PI;
-	return sinf(temp) / x;
+	return sinf(temp) / temp;
 }
 
 float cosc(float x) {
@@ -94,6 +94,11 @@ size_t aza_align_non_power_of_two(size_t size, size_t alignment) {
 	} else {
 		return (size/alignment+1)*alignment;
 	}
+}
+
+int32_t signExtend24Bit(uint32_t value) {
+	uint32_t signBit = 1 << 23;
+	return (int32_t)(((value & 0xffffff) ^ signBit) - signBit);
 }
 
 void azaStrToLower(char *dst, size_t dstSize, const char *src) {

@@ -31,6 +31,10 @@ float cosc(float x);
 
 float linc(float x);
 
+static inline float lerp(float a, float b, float t) {
+	return a + (b - a) * t;
+}
+
 float cubic(float a, float b, float c, float d, float x);
 
 float clampf(float a, float minimum, float maximum);
@@ -52,7 +56,12 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 
 #define AZA_MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#define AZA_CLAMP(a, min, max) AZA_MAX(min, AZA_MIN(max, a))
+
 #define AZA_SAMPLES_TO_MS(samples, samplerate) ((float)(samples) / (float)(samplerate) * 1000.0f)
+
+// Returns the 32-bit signed integer representation of a 24-bit integer stored in the lower 24 bits of a u32. You don't have to worry about what's in the high 8 bits as they'll be masked out.
+int32_t signExtend24Bit(uint32_t value);
 
 static const float AZA_TAU = 6.283185307179586f;
 static const float AZA_PI = 3.14159265359f;

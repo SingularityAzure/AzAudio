@@ -47,16 +47,18 @@ void logCallback(AzaLogLevel level, const char* format, ...) {
 	sys::cout << buffer;
 }
 
-azaLookaheadLimiterData limiterData[AZA_CHANNELS_DEFAULT] = {{}};
-azaCompressorData compressorData[AZA_CHANNELS_DEFAULT] = {{}};
-azaDelayData delayData[AZA_CHANNELS_DEFAULT] = {{}};
-azaDelayData delay2Data[AZA_CHANNELS_DEFAULT] = {{}};
-azaDelayData delay3Data[AZA_CHANNELS_DEFAULT] = {{}};
-azaReverbData reverbData[AZA_CHANNELS_DEFAULT] = {{}};
-azaFilterData highPassData[AZA_CHANNELS_DEFAULT] = {{}};
-azaGateData gateData[AZA_CHANNELS_DEFAULT] = {{}};
-azaFilterData gateBandPass[AZA_CHANNELS_DEFAULT] = {{}};
-azaFilterData delayWetFilterData[AZA_CHANNELS_DEFAULT] = {{}};
+#define NUM_CHANNELS 1
+
+azaLookaheadLimiterData limiterData[NUM_CHANNELS] = {{}};
+azaCompressorData compressorData[NUM_CHANNELS] = {{}};
+azaDelayData delayData[NUM_CHANNELS] = {{}};
+azaDelayData delay2Data[NUM_CHANNELS] = {{}};
+azaDelayData delay3Data[NUM_CHANNELS] = {{}};
+azaReverbData reverbData[NUM_CHANNELS] = {{}};
+azaFilterData highPassData[NUM_CHANNELS] = {{}};
+azaGateData gateData[NUM_CHANNELS] = {{}};
+azaFilterData gateBandPass[NUM_CHANNELS] = {{}};
+azaFilterData delayWetFilterData[NUM_CHANNELS] = {{}};
 
 std::vector<float> micBuffer;
 size_t lastOutputBufferSize=0;
@@ -110,9 +112,9 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	// if ((err = azaFilter(buffer, delayWetFilterData))) {
 	// 	return err;
 	// }
-	if ((err = azaGate(buffer, gateData))) {
-		return err;
-	}
+	// if ((err = azaGate(buffer, gateData))) {
+	// 	return err;
+	// }
 	// printf("gate gain: %f\n", gateData->gain);
 	// if ((err = azaDelay(buffer, delayData))) {
 	// 	return err;
@@ -120,18 +122,18 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	// if ((err = azaDelay(buffer, delay2Data))) {
 	// 	return err;
 	// }
-	if ((err = azaDelay(buffer, delay3Data))) {
-		return err;
-	}
+	// if ((err = azaDelay(buffer, delay3Data))) {
+	// 	return err;
+	// }
 	// if ((err = azaReverb(buffer, reverbData))) {
 	// 	return err;
 	// }
-	if ((err = azaFilter(buffer, highPassData))) {
-		return err;
-	}
-	if ((err = azaCompressor(buffer, compressorData))) {
-		return err;
-	}
+	// if ((err = azaFilter(buffer, highPassData))) {
+	// 	return err;
+	// }
+	// if ((err = azaCompressor(buffer, compressorData))) {
+	// 	return err;
+	// }
 	if ((err = azaLookaheadLimiter(buffer, limiterData))) {
 		return err;
 	}
@@ -174,7 +176,7 @@ int main(int argumentCount, char** argumentValues) {
 				sys::cout << "\t" << azaGetDeviceName(AZA_INPUT, i) << " with " << channels << " channels." << std::endl;
 			}
 		}
-		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
+		for (int c = 0; c < NUM_CHANNELS; c++) {
 			gateData[c].threshold = -42.0f;
 			gateData[c].attack = 10.0f;
 			gateData[c].decay = 500.0f;
@@ -226,26 +228,33 @@ int main(int argumentCount, char** argumentValues) {
 			compressorData[c].decay = 200.0f;
 			azaCompressorDataInit(&compressorData[c]);
 
-			limiterData[c].gainInput = 12.0f;
+			limiterData[c].gainInput = 24.0f;
 			limiterData[c].gainOutput = -6.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
 		azaStream streamInput = {0};
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;
-		if (azaStreamInit(&streamInput, "default") != AZA_SUCCESS) {
+		streamInput.channels = NUM_CHANNELS;
+		// streamInput.samplerate = 96000;
+		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init input stream!");
 		}
+		// This ensures that if anything changes in the backend, our input stream will always have the same channels and samplerate.
+		streamInput.channels = azaStreamGetChannels(&streamInput);
+		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
 		azaStream streamOutput = {0};
+		streamOutput.channels = streamInput.channels;
+		streamOutput.samplerate = streamInput.samplerate;
 		streamOutput.mixCallback = mixCallbackOutput;
-		if (azaStreamInit(&streamOutput, "default") != AZA_SUCCESS) {
+		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init output stream!");
 		}
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
 		azaStreamDeinit(&streamInput);
 		azaStreamDeinit(&streamOutput);
-		for (int c = 0; c < AZA_CHANNELS_DEFAULT; c++) {
+		for (int c = 0; c < NUM_CHANNELS; c++) {
 			azaDelayDataDeinit(&delayData[c]);
 			azaReverbDataDeinit(&reverbData[c]);
 		}

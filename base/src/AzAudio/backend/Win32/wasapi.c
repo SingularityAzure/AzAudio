@@ -111,8 +111,12 @@ typedef struct azaStreamData {
 	azaDeviceInfo *deviceInfo;
 	uint32_t bufferFrames;
 	uint8_t *buffer;
+	float *nativeBuffer;
 	// If our exact format matches, then this will be NULL, and you can just use buffer. Otherwise, we need to convert formats, and this serves as our processing buffer.
 	float *myBuffer;
+	uint32_t myBufferFrames;
+	uint32_t mySamplerate;
+	uint32_t myChannels;
 
 	IAudioClient *pAudioClient;
 	union {
@@ -145,91 +149,24 @@ static void azaStreamDataFree(azaStreamData *data) {
 		data->isActive = 0;
 		streamCount--;
 		SAFE_FREE(data->myBuffer);
+		SAFE_FREE(data->nativeBuffer);
 	}
 }
 
-
-static void azaStreamProcess(azaStreamData *data) {
-	HRESULT hResult;
-	if (!data->isActive) return;
-
-	uint32_t numFrames;
-
-	azaStream *stream = data->stream;
-	if (stream->deviceInterface == AZA_OUTPUT) {
-		uint32_t numFramesUnread;
-		hResult = data->pAudioClient->lpVtbl->GetCurrentPadding(data->pAudioClient, &numFramesUnread);
-		numFrames = data->bufferFrames - numFramesUnread;
-		if (numFrames == 0) return;
-		AZA_LOG_TRACE("Processing %u output frames\n", numFrames);
-		hResult = data->pRenderClient->lpVtbl->GetBuffer(data->pRenderClient, numFrames, &data->buffer);
-		CHECK_RESULT("IAudioRenderClient::GetBuffer", return);
-	} else {
-		hResult = data->pCaptureClient->lpVtbl->GetNextPacketSize(data->pCaptureClient, &numFrames);
-		if (hResult == AUDCLNT_E_DEVICE_INVALIDATED) {
-			// TODO: Handle this
-			return;
-		}
-		CHECK_RESULT("IAudioCaptureClient::GetNextPacketSize", return);
-		if (numFrames == 0) return;
-		DWORD flags;
-		hResult = data->pCaptureClient->lpVtbl->GetBuffer(data->pCaptureClient, &data->buffer, &numFrames, &flags, NULL, NULL);
-		CHECK_RESULT("IAudioCaptureClient::GetBuffer", return);
-		AZA_LOG_TRACE("Processing %u input frames\n", numFrames);
-		if (data->myBuffer) {
-			// TODO: Convert the data format
-			assert(0);
-		}
-	}
-
-	float *samples = data->myBuffer ? data->myBuffer : (float*)data->buffer;
-
-	stream->mixCallback((azaBuffer){
-		.channels = stream->channels,
-		.frames = numFrames,
-		.samplerate = stream->samplerate,
-		.samples = samples,
-		.stride = stream->channels,
-	}, stream->userdata);
-
-	if (stream->deviceInterface == AZA_OUTPUT) {
-		if (data->myBuffer) {
-			// TODO: Convert the data format
-			assert(0);
-		}
-		hResult = data->pRenderClient->lpVtbl->ReleaseBuffer(data->pRenderClient, numFrames, 0);
-		CHECK_RESULT("IAudioRenderClient::ReleaseBuffer", return);
-	} else {
-		hResult = data->pCaptureClient->lpVtbl->ReleaseBuffer(data->pCaptureClient, numFrames);
-		CHECK_RESULT("IAudioCaptureClient::ReleaseBuffer", return);
-	}
+static const char* azaStreamGetDeviceNameWASAPI(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->deviceInfo->name;
 }
 
-
-static unsigned __stdcall soundThreadProc(void *userdata) {
-	HRESULT hResult;
-	hResult = CoInitialize(NULL);
-	CHECK_RESULT("soundThreadProc CoInitialize", goto error);
-
-	azaMutexLock(&mutex);
-	while (!shouldQuit) {
-		// Do the sound stuffs
-		for (int i = 0; i < AZA_MAX_STREAMS; i++) {
-			azaStreamProcess(&streams[i]);
-		}
-
-		azaMutexUnlock(&mutex);
-		// TODO: Actually time our runtime so we only sleep if we're not too busy
-		azaThreadSleep(1);
-		azaMutexLock(&mutex);
-	}
-	azaMutexUnlock(&mutex);
-	return 0;
-error:
-	return 1;
+static size_t azaStreamGetSamplerateWASAPI(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->mySamplerate;
 }
 
-
+static size_t azaStreamGetChannelsWASAPI(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->myChannels;
+}
 
 static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCount, EDataFlow dataFlow, const char *poolTag) {
 #define FAIL_ACTION result = AZA_MAX_DEVICES; goto error
@@ -269,6 +206,349 @@ error:
 #undef FAIL_ACTION
 }
 
+static uint32_t GetResampledFramecount(uint32_t dstSamplerate, uint32_t srcSamplerate, uint32_t numSamples) {
+	return (uint32_t)ceilf((float)numSamples * (float)dstSamplerate / (float)srcSamplerate);
+}
+
+// TODO: Maybe make this configurable. Real hardcore audio quality requires a much larger window, which comes at a pretty significant cost. Maybe use SIMD instead and just make it bigger (with possibly an option for a low-latency resampling kernel that sacrifices the phase-frequency relationship).
+#define AZA_SINC_WINDOW 20
+
+static float lanczos(float x) {
+	float c = cos(x * AZA_PI / (AZA_SINC_WINDOW*2.0f));
+	return sinc(x) * c*c;
+}
+
+#define AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING 128
+
+#define AZA_LANCZOS_TABLE_SIZE (AZA_SINC_WINDOW*AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING+1)
+
+static float LANCZOS_TABLE[AZA_LANCZOS_TABLE_SIZE];
+static float LANCZOS_FLUX = 1.0f;
+
+static void lanczosTableInit() {
+	LANCZOS_FLUX = 0.0f;
+	for (uint32_t i = 0; i < AZA_LANCZOS_TABLE_SIZE-1; i++) {
+		float value = lanczos((float)i / (float)AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING);
+		LANCZOS_FLUX += value;
+		LANCZOS_TABLE[i] = value;
+	}
+	LANCZOS_TABLE[AZA_LANCZOS_TABLE_SIZE-1] = 0.0f;
+	LANCZOS_FLUX = AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING * 0.5f / LANCZOS_FLUX;
+}
+
+static float lanczosTable(float x) {
+	if (x < 0.0f) x = -x;
+	x *= AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING;
+	uint32_t index = (uint32_t)x;
+	if (index >= AZA_LANCZOS_TABLE_SIZE) return 0.0f;
+	x -= (float)index;
+	return lerp(LANCZOS_TABLE[index], LANCZOS_TABLE[index+1], x);
+}
+
+static float sampleLanczos(float *src, float sample, int stride, int minFrame, int maxFrame) {
+	float result = 0.0f;
+	int start = (int)sample;
+	for (int i = start-AZA_SINC_WINDOW; i < start+AZA_SINC_WINDOW; i++) {
+		assert(i >= minFrame);
+		assert(i < maxFrame);
+		int index = AZA_CLAMP(i, minFrame, maxFrame-1);
+		float s = src[index * stride];
+		result += s * lanczosTable(((float)i - sample));
+	}
+	return result * LANCZOS_FLUX;
+}
+
+// TODO: This works well in fairly trivial cases, but a better implementation needs to know about the actual function of each channel.
+static void azaMixChannels(float *dst, int dstChannels, float *src, int srcChannels, int numFrames) {
+	float amplification = AZA_MIN(1.0f, (float)dstChannels / (float)srcChannels);
+	memset(dst, 0, numFrames * dstChannels * sizeof(float));
+	for (int dstC = 0; dstC < dstChannels; dstC++) {
+		float *dstOffset = dst + dstC;
+		for (int srcC = 0; srcC < AZA_MAX(1, srcChannels / dstChannels); srcC++) {
+			float *srcOffset = src + srcC + dstC * srcChannels / dstChannels;
+			for (uint32_t i = 0; i < numFrames; i++) {
+				dstOffset[i * dstChannels] += srcOffset[i * srcChannels] * amplification;
+			}
+		}
+	}
+}
+
+static void azaStreamConvertFromNative(azaStreamData *data, uint32_t numFramesNative, uint32_t numFrames) {
+	azaStream *stream = data->stream;
+	// First, populate nativeBuffer, doing any type conversions necessary
+	// NOTE: We're leaving 2*AZA_SINC_WINDOW space at the beginning, allowing us to process the incoming data with exactly enough latency for resampling to occur with no artifacts. This block will have been copied from the end of the last chunk.
+	float *nativeBuffer = data->nativeBuffer + AZA_SINC_WINDOW * 2 * data->waveFormatExtensible.Format.nChannels;
+	if (IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_PCM)) {
+		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
+			case 8: {
+				int8_t *src = (int8_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					nativeBuffer[i] = (float)src[i] / 127.0f;
+				}
+			} break;
+			case 16: {
+				int16_t *src = (int16_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					nativeBuffer[i] = (float)src[i] / 32767.0f;
+				}
+			} break;
+			case 24: {
+				uint8_t *src = data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					// Little endian to the rescue :)
+					nativeBuffer[i] = (float)signExtend24Bit(*(uint32_t*)&src[i*3]) / 8388607.0f;
+				}
+			} break;
+			case 32: {
+				int32_t *src = (int32_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					nativeBuffer[i] = (float)src[i] / 2147483647.0f;
+				}
+			} break;
+			default:
+				assert(0);
+				break;
+		}
+	} else {
+		assert(IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT));
+		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
+			case 32: {
+				float *src = (float*)data->buffer;
+				memcpy(nativeBuffer, src, numFramesNative * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+			} break;
+			case 64: {
+				// NOTE: Is this ever even a thing? This much precision is surely never needed...
+				double *src = (double*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					nativeBuffer[i] = (float)src[i];
+				}
+			} break;
+			default:
+				assert(0);
+				break;
+		}
+	}
+	// Next, use nativeBuffer's contents to do any additional processing needed.
+	if (data->mySamplerate == data->waveFormatExtensible.Format.nSamplesPerSec) {
+		// No resampling necessary, so we don't need to use the extra buffer space and therefore aren't adding latency.
+		assert(numFrames == numFramesNative);
+		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
+			memcpy(data->myBuffer, nativeBuffer, sizeof(float) * numFrames * data->myChannels);
+		} else {
+			// Do channel mixing
+			azaMixChannels(data->myBuffer, data->myChannels, nativeBuffer, data->waveFormatExtensible.Format.nChannels, numFrames);
+		}
+	} else {
+		// Move our reference position back by half of the entire resampling kernel window, adding AZA_SINC_WINDOW samples of latency, but allowing for artifact-free resampling.
+		nativeBuffer = data->nativeBuffer + AZA_SINC_WINDOW * data->waveFormatExtensible.Format.nChannels;
+		// Resample
+		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
+			// Just resample
+			float factor = (float)data->waveFormatExtensible.Format.nSamplesPerSec / (float)data->mySamplerate;
+			uint32_t stride = data->myChannels;
+			for (uint32_t c = 0; c < data->myChannels; c++) {
+				float *dst = data->myBuffer + c;
+				float *src = nativeBuffer + c;
+				for (uint32_t i = 0; i < numFrames; i++) {
+					float s = (float)i * factor;
+					dst[i * stride] = sampleLanczos(src, s, stride, -AZA_SINC_WINDOW, numFramesNative + AZA_SINC_WINDOW);
+				}
+			}
+		} else {
+			// Resample and do channel mixing
+			assert(0); // unimplemented
+		}
+		// Finally, copy the end of the buffer to the beginning for the next go around. (This is only necessary when resampling).
+		memcpy(data->nativeBuffer, data->nativeBuffer + numFramesNative * data->waveFormatExtensible.Format.nChannels, AZA_SINC_WINDOW * 2 * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+	}
+}
+
+static void azaStreamConvertToNative(azaStreamData *data, uint32_t numFramesNative, uint32_t numFrames) {
+	float *myBuffer;
+	if (data->mySamplerate == data->waveFormatExtensible.Format.nSamplesPerSec) {
+		myBuffer = data->myBuffer + AZA_SINC_WINDOW * 2 * data->myChannels;
+		assert(numFrames == numFramesNative);
+		// No resampling necessary, so we don't need to use the extra buffer space and therefore aren't adding latency.
+		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
+			memcpy(data->nativeBuffer, myBuffer, sizeof(float) * numFrames * data->myChannels);
+		} else {
+			// Do channel mixing
+			azaMixChannels(data->nativeBuffer, data->waveFormatExtensible.Format.nChannels, myBuffer, data->myChannels, numFrames);
+		}
+	} else {
+		// Resample
+		myBuffer = data->myBuffer + AZA_SINC_WINDOW * data->myChannels;
+		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
+			// Just resample
+			float factor = (float)data->mySamplerate / (float)data->waveFormatExtensible.Format.nSamplesPerSec;
+			uint32_t stride = data->myChannels;
+			for (uint32_t c = 0; c < data->myChannels; c++) {
+				float *src = myBuffer + c;
+				float *dst = data->nativeBuffer + c;
+				for (uint32_t i = 0; i < numFramesNative; i++) {
+					float s = (float)i * factor;
+					dst[i * stride] = sampleLanczos(src, s, stride, -AZA_SINC_WINDOW, numFrames + AZA_SINC_WINDOW);
+				}
+			}
+		} else {
+			// Resample and do channel mixing
+			assert(0); // unimplemented
+		}
+		// Finally, copy the end of the buffer to the beginning for the next go around. (This is only necessary when resampling).
+		memcpy(data->myBuffer, data->myBuffer + numFrames * data->myChannels, AZA_SINC_WINDOW * 2 * data->myChannels * sizeof(float));
+	}
+	if (IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_PCM)) {
+		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
+			case 8: {
+				int8_t *dst = (int8_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					dst[i] = (int8_t)(data->nativeBuffer[i] * 127.0f);
+				}
+			} break;
+			case 16: {
+				int16_t *dst = (int16_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					dst[i] = (int16_t)(data->nativeBuffer[i] * 32767.0f);
+				}
+			} break;
+			case 24: {
+				uint8_t *dst = data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					uint32_t value = (uint32_t)(int32_t)(data->nativeBuffer[i] * 8388607.0f);
+					dst[i+0] = (value >>  0) & 0xff;
+					dst[i+1] = (value >>  8) & 0xff;
+					dst[i+2] = (value >> 16) & 0xff;
+				}
+			} break;
+			case 32: {
+				// NOTE: This might not be a thing because you might as well just use floats at this point.
+				int32_t *dst = (int32_t*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					dst[i] = (int32_t)(data->nativeBuffer[i] * 2147483647.0f);
+				}
+			} break;
+			default:
+				assert(0);
+				break;
+		}
+	} else {
+		assert(IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT));
+		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
+			case 32: {
+				float *dst = (float*)data->buffer;
+				memcpy(dst, data->nativeBuffer, numFramesNative * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+			} break;
+			case 64: {
+				// NOTE: Is this ever even a thing? This much precision is surely never needed...
+				double *dst = (double*)data->buffer;
+				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
+					dst[i] = (double)data->nativeBuffer[i];
+				}
+			} break;
+			default:
+				assert(0);
+				break;
+		}
+	}
+}
+
+static void azaStreamProcess(azaStreamData *data) {
+	HRESULT hResult;
+	if (!data->isActive) return;
+
+	uint32_t numFrames;
+	uint32_t numFramesNative;
+
+	azaStream *stream = data->stream;
+	float *samples;
+	if (stream->deviceInterface == AZA_OUTPUT) {
+		uint32_t numFramesUnread;
+		hResult = data->pAudioClient->lpVtbl->GetCurrentPadding(data->pAudioClient, &numFramesUnread);
+		if (hResult == AUDCLNT_E_DEVICE_INVALIDATED) {
+			defaultOutputDevice = azaFindDefaultDevice(deviceOutput, deviceOutputCount, eRender, "output");
+			azaStreamDeinit(stream);
+			azaStreamInit(stream);
+			return;
+		}
+		CHECK_RESULT("IAudioRenderClient::GetCurrentPadding", return);
+		numFramesNative = data->bufferFrames - numFramesUnread;
+		if (numFramesNative == 0) return;
+		AZA_LOG_TRACE("Processing %u output frames\n", numFramesNative);
+		hResult = data->pRenderClient->lpVtbl->GetBuffer(data->pRenderClient, numFramesNative, &data->buffer);
+		CHECK_RESULT("IAudioRenderClient::GetBuffer", return);
+		numFrames = GetResampledFramecount(data->mySamplerate, data->waveFormatExtensible.Format.nSamplesPerSec, numFramesNative);
+		if (data->myBuffer) {
+			samples = data->myBuffer + AZA_SINC_WINDOW * 2 * data->myChannels;
+		} else {
+			samples = (float*)data->buffer;
+		}
+	} else {
+		hResult = data->pCaptureClient->lpVtbl->GetNextPacketSize(data->pCaptureClient, &numFramesNative);
+		if (hResult == AUDCLNT_E_DEVICE_INVALIDATED) {
+			defaultInputDevice = azaFindDefaultDevice(deviceInput, deviceInputCount, eCapture, "input");
+			azaStreamDeinit(stream);
+			azaStreamInit(stream);
+			return;
+		}
+		CHECK_RESULT("IAudioCaptureClient::GetNextPacketSize", return);
+		if (numFramesNative == 0) return;
+		DWORD flags;
+		hResult = data->pCaptureClient->lpVtbl->GetBuffer(data->pCaptureClient, &data->buffer, &numFramesNative, &flags, NULL, NULL);
+		CHECK_RESULT("IAudioCaptureClient::GetBuffer", return);
+		AZA_LOG_TRACE("Processing %u input frames\n", numFramesNative);
+		numFrames = GetResampledFramecount(data->mySamplerate, data->waveFormatExtensible.Format.nSamplesPerSec, numFramesNative);
+		if (data->myBuffer) {
+			azaStreamConvertFromNative(data, numFramesNative, numFrames);
+			samples = data->myBuffer;
+		} else {
+			samples = (float*)data->buffer;
+		}
+	}
+
+	stream->mixCallback((azaBuffer){
+		.channels = data->myChannels,
+		.frames = numFrames,
+		.samplerate = data->mySamplerate,
+		.samples = samples,
+		.stride = data->myChannels,
+	}, stream->userdata);
+
+	if (stream->deviceInterface == AZA_OUTPUT) {
+		if (data->myBuffer) {
+			azaStreamConvertToNative(data, numFramesNative, numFrames);
+		}
+		hResult = data->pRenderClient->lpVtbl->ReleaseBuffer(data->pRenderClient, numFramesNative, 0);
+		CHECK_RESULT("IAudioRenderClient::ReleaseBuffer", return);
+	} else {
+		hResult = data->pCaptureClient->lpVtbl->ReleaseBuffer(data->pCaptureClient, numFramesNative);
+		CHECK_RESULT("IAudioCaptureClient::ReleaseBuffer", return);
+	}
+}
+
+
+static unsigned __stdcall soundThreadProc(void *userdata) {
+	HRESULT hResult;
+	hResult = CoInitialize(NULL);
+	CHECK_RESULT("soundThreadProc CoInitialize", goto error);
+
+	azaMutexLock(&mutex);
+	while (!shouldQuit) {
+		// Do the sound stuffs
+		for (int i = 0; i < AZA_MAX_STREAMS; i++) {
+			azaStreamProcess(&streams[i]);
+		}
+
+		azaMutexUnlock(&mutex);
+		// TODO: Actually time our runtime so we only sleep if we're not too busy
+		azaThreadSleep(1);
+		azaMutexLock(&mutex);
+	}
+	azaMutexUnlock(&mutex);
+	return 0;
+error:
+	return 1;
+}
+
 static void azaWASAPIDeinit() {
 	shouldQuit = 1;
 	if (azaThreadJoinable(&thread)) {
@@ -286,6 +566,7 @@ static void azaWASAPIDeinit() {
 }
 
 static int azaWASAPIInit() {
+	lanczosTableInit();
 	HRESULT hResult;
 	hResult = CoInitialize(NULL);
 	CHECK_RESULT("CoInitialize", goto error);
@@ -388,6 +669,7 @@ static int azaWASAPIInit() {
 			AZA_LOG_TRACE("Device %u:\n\tidStr: \"%s\"\n\tname: \"%s\"\n\tchannels: %u\n\tbitDepth: %u\n\tsamplerate: %zu\n\tspeakerConfig: 0x%x\n", i, idCStr, name, device[i].channels, device[i].sampleBitDepth, device[i].samplerate, device[i].speakerConfig);
 			free(idCStr);
 		}
+		continue;
 goNext:
 		SAFE_RELEASE(pPropertyStore);
 		SAFE_RELEASE(pEndpoint);
@@ -410,7 +692,7 @@ error:
 	return AZA_ERROR_BACKEND_LOAD_ERROR;
 }
 
-static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
+static int azaStreamInitWASAPI(azaStream *stream) {
 	int errCode = AZA_SUCCESS;
 	azaDeviceInfo *deviceInfoDefault = NULL;
 	azaDeviceInfo *devicePool = NULL;
@@ -418,6 +700,7 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 	size_t deviceCount = 0;
 	azaStreamData *data = NULL;
 	WAVEFORMATEXTENSIBLE *defaultFormat = NULL;
+	WAVEFORMATEXTENSIBLE *pClosestFormat = NULL;
 	if (stream->mixCallback == NULL) {
 		AZA_LOG_ERR("azaStreamInitWASAPI error: no mix callback provided.\n");
 		return AZA_ERROR_NULL_POINTER;
@@ -451,12 +734,14 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 		goto error;
 	}
 	// Search the nodes for the device name
-	for (size_t i = 0; i < deviceCount; i++) {
-		azaDeviceInfo *check = &devicePool[i];
-		if (strcmp(check->name, device) == 0) {
-			deviceInfo = check;
-			AZA_LOG_INFO("Chose device by name: \"%s\"\n", device);
-			break;
+	if (stream->deviceName) {
+		for (size_t i = 0; i < deviceCount; i++) {
+			azaDeviceInfo *check = &devicePool[i];
+			if (strcmp(check->name, stream->deviceName) == 0) {
+				deviceInfo = check;
+				AZA_LOG_INFO("Chose device by name: \"%s\"\n", stream->deviceName);
+				break;
+			}
 		}
 	}
 	if (!deviceInfo) {
@@ -471,10 +756,14 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 	// Find out if we natively support our desired format and samplerate, otherwise we have to resample and convert formats
 	hResult = data->pAudioClient->lpVtbl->GetMixFormat(data->pAudioClient, (WAVEFORMATEX**)&defaultFormat);
 	CHECK_RESULT("IAudioClient::GetMixFormat", FAIL_ACTION);
+
+	data->myChannels = stream->channels ? (WORD)stream->channels : defaultFormat->Format.nChannels;
+	data->mySamplerate = stream->samplerate ? (DWORD)stream->samplerate : defaultFormat->Format.nSamplesPerSec;
+
 	WAVEFORMATEXTENSIBLE desiredFormat;
 	desiredFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
-	desiredFormat.Format.nChannels = stream->channels ? (WORD)stream->channels : defaultFormat->Format.nChannels;
-	desiredFormat.Format.nSamplesPerSec = stream->samplerate ? (DWORD)stream->samplerate : defaultFormat->Format.nSamplesPerSec;
+	desiredFormat.Format.nChannels = data->myChannels;
+	desiredFormat.Format.nSamplesPerSec = data->mySamplerate;
 	desiredFormat.Format.wBitsPerSample = 32;
 	desiredFormat.Format.nBlockAlign = desiredFormat.Format.nChannels * 4;
 	desiredFormat.Format.nAvgBytesPerSec = desiredFormat.Format.nSamplesPerSec * desiredFormat.Format.nBlockAlign;
@@ -482,8 +771,6 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 	desiredFormat.Samples.wValidBitsPerSample = desiredFormat.Format.wBitsPerSample;
 	desiredFormat.dwChannelMask = SPEAKER_ALL;
 	desiredFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-	WAVEFORMATEXTENSIBLE closestFormat;
-	WAVEFORMATEXTENSIBLE *pClosestFormat = &closestFormat;
 	hResult = data->pAudioClient->lpVtbl->IsFormatSupported(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, (WAVEFORMATEX*)&desiredFormat, (WAVEFORMATEX**)&pClosestFormat);
 	// TODO: Probably handle the return values of IsFormatSupported (namely AUDCLNT_E_DEVICE_INVALIDATED and AUDCLNT_E_SERVICE_NOT_RUNNING)
 	CHECK_RESULT("IAudioClient::IsFormatSupported", FAIL_ACTION);
@@ -492,19 +779,19 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 		// We got a closest match which is not an exact match
 		assert(pClosestFormat != NULL);
 		AZA_LOG_INFO("Device \"%s\" doesn't support the exact format desired\n", deviceInfo->name);
-		if (closestFormat.Format.nSamplesPerSec != desiredFormat.Format.nSamplesPerSec) {
-			AZA_LOG_INFO("\tNo support for %dHz samplerate (closest was %dHz)\n", deviceInfo->name, desiredFormat.Format.nSamplesPerSec, closestFormat.Format.nSamplesPerSec);
+		if (pClosestFormat->Format.nSamplesPerSec != desiredFormat.Format.nSamplesPerSec) {
+			AZA_LOG_INFO("\tNo support for %dHz samplerate (closest was %dHz)\n", desiredFormat.Format.nSamplesPerSec, pClosestFormat->Format.nSamplesPerSec);
 		}
-		if (closestFormat.Format.nChannels != desiredFormat.Format.nChannels) {
-			AZA_LOG_INFO("\tNo support for %hd channels (closest was %hd)\n", deviceInfo->name, desiredFormat.Format.nChannels, closestFormat.Format.nChannels);
+		if (pClosestFormat->Format.nChannels != desiredFormat.Format.nChannels) {
+			AZA_LOG_INFO("\tNo support for %hd channels (closest was %hd)\n", desiredFormat.Format.nChannels, pClosestFormat->Format.nChannels);
 		}
-		if (closestFormat.Format.wBitsPerSample != desiredFormat.Format.wBitsPerSample) {
-			AZA_LOG_INFO("\tNo support for %hd bits per sample (closest was %hd)\n", deviceInfo->name, desiredFormat.Format.wBitsPerSample, closestFormat.Format.wBitsPerSample);
+		if (pClosestFormat->Format.wBitsPerSample != desiredFormat.Format.wBitsPerSample) {
+			AZA_LOG_INFO("\tNo support for %hd bits per sample (closest was %hd)\n", desiredFormat.Format.wBitsPerSample, pClosestFormat->Format.wBitsPerSample);
 		}
-		if (!IsEqualGUID(&closestFormat.SubFormat, &desiredFormat.SubFormat)) {
+		if (!IsEqualGUID(&pClosestFormat->SubFormat, &desiredFormat.SubFormat)) {
 			AZA_LOG_INFO("\tNo support for IEEE float formats\n");
 		}
-		data->waveFormatExtensible = closestFormat;
+		data->waveFormatExtensible = *pClosestFormat;
 	} else if (hResult == S_OK) {
 		// Our exact format is supported
 		data->waveFormatExtensible = desiredFormat;
@@ -515,8 +802,6 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 		data->waveFormatExtensible = *defaultFormat;
 		AZA_LOG_INFO("Device \"%s\" can't compromise, falling back to default format\n", deviceInfo->name);
 	}
-	stream->channels = data->waveFormatExtensible.Format.nChannels;
-	stream->samplerate = data->waveFormatExtensible.Format.nSamplesPerSec;
 
 	hResult = data->pAudioClient->lpVtbl->Initialize(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, 0, 10000 * 25, 0, (WAVEFORMATEX*)&data->waveFormatExtensible, NULL);
 	CHECK_RESULT("IAudioClient::Initialize", FAIL_ACTION);
@@ -541,7 +826,9 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 	CHECK_RESULT("IAudioClient::Start", FAIL_ACTION);
 
 	if (!exactFormat) {
-		data->myBuffer = malloc(sizeof(float) * data->bufferFrames * stream->channels);
+		data->myBufferFrames = GetResampledFramecount(data->mySamplerate, data->waveFormatExtensible.Format.nSamplesPerSec, data->bufferFrames);
+		data->nativeBuffer = calloc((data->bufferFrames + AZA_SINC_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
+		data->myBuffer = calloc((data->myBufferFrames + AZA_SINC_WINDOW*2) * data->myChannels, sizeof(float));
 	} else {
 		data->myBuffer = NULL;
 	}
@@ -550,10 +837,12 @@ static int azaStreamInitWASAPI(azaStream *stream, const char *device) {
 	data->isActive = 1;
 
 	CoTaskMemFree(defaultFormat);
+	CoTaskMemFree(pClosestFormat);
 	azaMutexUnlock(&mutex);
 	return AZA_SUCCESS;
 error:
 	CoTaskMemFree(defaultFormat);
+	CoTaskMemFree(pClosestFormat);
 	azaStreamDataFree(data);
 	SAFE_RELEASE(data->pAudioClient);
 	SAFE_RELEASE(data->pRenderClient);
@@ -612,6 +901,9 @@ static size_t azaGetDeviceChannelsWASAPI(azaDeviceInterface interface, size_t in
 int azaBackendWASAPIInit() {
 	azaStreamInit = azaStreamInitWASAPI;
 	azaStreamDeinit = azaStreamDeinitWASAPI;
+	azaStreamGetDeviceName = azaStreamGetDeviceNameWASAPI;
+	azaStreamGetSamplerate = azaStreamGetSamplerateWASAPI;
+	azaStreamGetChannels = azaStreamGetChannelsWASAPI;
 	azaGetDeviceCount = azaGetDeviceCountWASAPI;
 	azaGetDeviceName = azaGetDeviceNameWASAPI;
 	azaGetDeviceChannels = azaGetDeviceChannelsWASAPI;

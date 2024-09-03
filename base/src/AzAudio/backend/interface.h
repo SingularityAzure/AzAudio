@@ -30,6 +30,8 @@ typedef struct azaStream {
 
 	// User configuration
 
+	// leave as NULL for default device
+	const char *deviceName;
 	azaDeviceInterface deviceInterface;
 	// Leave at 0 for device default
 	size_t samplerate;
@@ -39,11 +41,20 @@ typedef struct azaStream {
 	void *userdata;
 } azaStream;
 
-typedef int (*fp_azaStreamInit)(azaStream *stream, const char *device);
+typedef int (*fp_azaStreamInit)(azaStream *stream);
 extern fp_azaStreamInit azaStreamInit;
 
 typedef void (*fp_azaStreamDeinit)(azaStream *stream);
 extern fp_azaStreamDeinit azaStreamDeinit;
+
+typedef const char* (*fp_azaStreamGetDeviceName)(azaStream *stream);
+extern fp_azaStreamGetDeviceName azaStreamGetDeviceName;
+
+typedef size_t (*fp_azaStreamGetSamplerate)(azaStream *stream);
+extern fp_azaStreamGetSamplerate azaStreamGetSamplerate;
+
+typedef size_t (*fp_azaStreamGetChannels)(azaStream *stream);
+extern fp_azaStreamGetChannels azaStreamGetChannels;
 
 typedef size_t (*fp_azaGetDeviceCount)(azaDeviceInterface interface);
 extern fp_azaGetDeviceCount azaGetDeviceCount;
