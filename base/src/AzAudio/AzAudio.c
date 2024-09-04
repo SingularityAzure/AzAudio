@@ -17,7 +17,7 @@
 
 fp_azaLogCallback azaLog = azaLogDefault;
 
-int azaLogLevel = AZA_LOG_LEVEL_INFO;
+AzaLogLevel azaLogLevel = AZA_LOG_LEVEL_INFO;
 
 int azaInit() {
 	const char *envLogLevel = getenv("AZAUDIO_LOG_LEVEL");

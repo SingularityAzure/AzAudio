@@ -86,6 +86,9 @@ static int
 static void
 (*fp_pw_proxy_destroy)(struct pw_proxy *proxy);
 
+static uint32_t
+(*fp_pw_stream_get_node_id)(struct pw_stream *stream);
+
 
 
 static struct pw_thread_loop *loop;
@@ -203,7 +206,7 @@ static void azaNodeEmplace(struct azaNodeInfo arr[], size_t *count, struct azaNo
 
 static void azaNodeInfo(void *data, const struct pw_node_info *info) {
 	const struct spa_dict_item *item;
-	struct azaNodeInfo nodeInfo;
+	struct azaNodeInfo nodeInfo = {0};
 	int isOutput = AZA_FALSE, isInput = AZA_FALSE;
 	nodeInfo.object_id = info->id;
 	AZA_LOG_TRACE("node: id:%u\n", info->id);
@@ -363,6 +366,9 @@ static void azaMakeSpaPodFormat(azaSpaPod *dst, enum spa_audio_format format, in
 typedef struct azaStreamData {
 	struct pw_stream *stream;
 	struct pw_stream_events stream_events;
+	const char *deviceName;
+	uint32_t samplerate;
+	uint32_t channels;
 } azaStreamData;
 
 static void azaStreamProcess(void *userdata) {
@@ -385,9 +391,9 @@ static void azaStreamProcess(void *userdata) {
 	stream->mixCallback((azaBuffer){
 		.samples = pcm,
 		.frames = numFrames,
-		.stride = stream->channels,
-		.channels = stream->channels,
-		.samplerate = stream->samplerate,
+		.stride = data->channels,
+		.channels = data->channels,
+		.samplerate = data->samplerate,
 	}, stream->userdata);
 
 	buffer->datas[0].chunk->offset = 0;
@@ -434,16 +440,28 @@ static int azaPipewireDeinit() {
 	return AZA_SUCCESS;
 }
 
-static int azaStreamInitPipewire(azaStream *stream, const char *device) {
+static const char* azaStreamGetDeviceNamePipewire(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->deviceName;
+}
+
+static size_t azaStreamGetSampleratePipewire(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->samplerate;
+}
+
+static size_t azaStreamGetChannelsPipewire(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->channels;
+}
+
+static int azaStreamInitPipewire(azaStream *stream) {
 	if (stream->mixCallback == NULL) {
 		AZA_LOG_ERR("azaStreamInitPipewire error: no mix callback provided.\n");
 		return AZA_ERROR_NULL_POINTER;
 	}
 	struct azaNodeInfo *deviceNodePool = NULL;
 	size_t deviceNodeCount = 0;
-
-	azaSpaPod formatPod;
-	azaMakeSpaPodFormat(&formatPod, SPA_AUDIO_FORMAT_F32, stream->channels, stream->samplerate);
 
 	azaStreamData *data = calloc(sizeof(azaStreamData), 1);
 	data->stream_events.version = PW_VERSION_STREAM_EVENTS;
@@ -478,12 +496,14 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 
 	struct azaNodeInfo *deviceNodeInfo = NULL;
 	// Search the nodes for the device name
-	for (size_t i = 0; i < deviceNodeCount; i++){
-		struct azaNodeInfo *node = &deviceNodePool[i];
-		if (strcmp(node->node_description, device) == 0) {
-			deviceNodeInfo = node;
-			AZA_LOG_INFO("Chose device by name: \"%s\"\n", device);
-			break;
+	if (stream->deviceName) {
+		for (size_t i = 0; i < deviceNodeCount; i++){
+			struct azaNodeInfo *node = &deviceNodePool[i];
+			if (strcmp(node->node_description, stream->deviceName) == 0) {
+				deviceNodeInfo = node;
+				AZA_LOG_INFO("Chose device by name: \"%s\"\n", stream->deviceName);
+				break;
+			}
 		}
 	}
 	if (!deviceNodeInfo) {
@@ -515,6 +535,7 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 			NULL
 		);
 		channelsDefault = deviceNodeInfo->audio_channels;
+		data->deviceName = deviceNodeInfo->node_description;
 	} else {
 		AZA_LOG_INFO("Letting pipewire choose a device for us...\n");
 		properties = fp_pw_properties_new(
@@ -525,10 +546,11 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 		);
 	}
 
-	if (stream->channels == 0)
-		stream->channels = channelsDefault;
-	if (stream->samplerate == 0)
-		stream->samplerate = samplerateDefault;
+	data->channels = stream->channels ? stream->channels : channelsDefault;
+	data->samplerate = stream->samplerate ? stream->samplerate : samplerateDefault;
+	
+	azaSpaPod formatPod;
+	azaMakeSpaPodFormat(&formatPod, SPA_AUDIO_FORMAT_F32, data->channels, data->samplerate);
 
 	data->stream = fp_pw_stream_new_simple(
 		fp_pw_thread_loop_get_loop(loop),
@@ -547,6 +569,21 @@ static int azaStreamInitPipewire(azaStream *stream, const char *device) {
 		,
 		formatPod.params, 1
 	);
+	if (!deviceNodeInfo) {
+		// We probably shouldn't have to do this
+		uint32_t node_id = fp_pw_stream_get_node_id(data->stream);
+		for (size_t i = 0; i < deviceNodeCount; i++) {
+			struct azaNodeInfo *node = &deviceNodePool[i];
+			if (node->object_id == node_id) {
+				data->deviceName = node->node_description;
+				break;
+			}
+		}
+		if (!data->deviceName) {
+			// If all else fails...
+			data->deviceName = "default";
+		}
+	}
 	fp_pw_thread_loop_unlock(loop);
 	stream->data = data;
 	return AZA_SUCCESS;
@@ -622,6 +659,7 @@ int azaBackendPipewireInit() {
 	BIND_SYMBOL(pw_stream_destroy);
 	BIND_SYMBOL(pw_stream_connect);
 	BIND_SYMBOL(pw_stream_disconnect);
+	BIND_SYMBOL(pw_stream_get_node_id);
 	BIND_SYMBOL(pw_properties_new);
 	BIND_SYMBOL(pw_stream_dequeue_buffer);
 	BIND_SYMBOL(pw_stream_queue_buffer);
@@ -633,6 +671,9 @@ int azaBackendPipewireInit() {
 
 	azaStreamInit = azaStreamInitPipewire;
 	azaStreamDeinit = azaStreamDeinitPipewire;
+	azaStreamGetDeviceName = azaStreamGetDeviceNamePipewire;
+	azaStreamGetSamplerate = azaStreamGetSampleratePipewire;
+	azaStreamGetChannels = azaStreamGetChannelsPipewire;
 	azaGetDeviceCount = azaGetDeviceCountPipewire;
 	azaGetDeviceName = azaGetDeviceNamePipewire;
 	azaGetDeviceChannels = azaGetDeviceChannelsPipewire;
