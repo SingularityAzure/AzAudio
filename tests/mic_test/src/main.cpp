@@ -73,9 +73,10 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		sys::cout << "Shrunk!" << std::endl;
 		// Crossfade from new end to actual end
 		float t = 0.0f;
-		for (size_t i = micBuffer.size()-255*buffer.channels; i < micBuffer.size(); i++) {
+		size_t crossFadeLen = std::min((micBuffer.size() - count) / buffer.channels, 256ull);
+		for (size_t i = micBuffer.size()-crossFadeLen*buffer.channels; i < micBuffer.size(); i++) {
 			if (i % buffer.channels == 0) {
-				t = std::min(1.0f, t + 1.0f / 256.0f);
+				t = std::min(1.0f, t + 1.0f / (float)crossFadeLen);
 			}
 			float *dst = &micBuffer[i - count];
 			float src = micBuffer[i];
@@ -236,7 +237,7 @@ int main(int argumentCount, char** argumentValues) {
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;
 		streamInput.channels = NUM_CHANNELS;
-		// streamInput.samplerate = 96000;
+		streamInput.samplerate = 44100/4;
 		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init input stream!");
 		}

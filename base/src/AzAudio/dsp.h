@@ -256,6 +256,43 @@ int azaGate(azaBuffer buffer, azaGateData *data);
 
 
 
+typedef struct azaKernel {
+	// if this is 1, we only store half of the actual table
+	int isSymmetrical;
+	// length of the kernel, which is half of the actual length if we're symmetrical
+	float length;
+	// How many samples there are between an interval of length 1
+	float scale;
+	// total size of table, which is length * scale
+	uint32_t size;
+	float *table;
+} azaKernel;
+
+// Creates a blank kernel
+void azaKernelInit(azaKernel *kernel, int isSymmetrical, float length, float scale);
+void azaKernelDeinit(azaKernel *kernel);
+
+float azaKernelSample(azaKernel *kernel, float x);
+
+// Makes a lanczos kernel. resolution is the number of samples between zero crossings
+void azaKernelMakeLanczos(azaKernel *kernel, float resolution, float radius);
+
+
+float azaSampleWithKernel(float *src, int stride, int minFrame, int maxFrame, azaKernel *kernel, float pos);
+
+// Performs resampling of src into dst with the given scaling factor and kernel.
+// srcFrames is not actually needed here because the sampleable extent is provided by srcFrameMin and srcFrameMax, but for this description it refers to how many samples within src are considered the "meat" of the signal (excluding padding carried over from the last iteration of resampling a stream).
+// factor is the scaling ratio (defined roughly as `srcFrames / dstFrames`), passed in explicitly because the exact desired ratio may not be represented accurately by a ratio of the length of two small buffers. For no actual time scaling, this ratio should be perfectly represented by `srcSamplerate / dstSamplerate`.
+// src should point at least `-srcFrameMin` frames into an existing source buffer with a total extent of `srcFrameMax-srcFrameMin`.
+// srcFrameMin and srcFrameMax allow the accessible extent of src to go outside of the given 0...srcFrames extent, since that's required for perfect resampling of chunks of a stream (while accepting some latency). Ideally, srcFrameMin would be `-kernel->size` and srcFrameMax would be `srcFrames+kernel->size` for a symmetric kernel. For a non-symmetric kernel, srcFrameMin can be 0, and srcFrameMax would still be srcFrames+kernel->size. For two isolated buffers, srcFrameMin should be 0 and srcFrameMax should be srcFrames. Any samples outside of this extent will be considered to be zeroes.
+// srcSampleOffset should be in the range 0 to 1
+void azaResample(azaKernel *kernel, float factor, float *dst, int dstStride, int dstFrames, float *src, int srcStride, int srcFrameMin, int srcFrameMax, float srcSampleOffset);
+
+// Same as azaResample, except the resampled values are added to dst instead of replacing them. Every sample is multiplied by amp before being added.
+void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int dstStride, int dstFrames, float *src, int srcStride, int srcFrameMin, int srcFrameMax, float srcSampleOffset);
+
+
+
 #ifdef __cplusplus
 }
 #endif

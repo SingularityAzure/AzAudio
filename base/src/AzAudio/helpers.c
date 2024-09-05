@@ -54,6 +54,11 @@ float linc(float x) {
 		return 1.0f + x;
 }
 
+float lanczos(float x, float radius) {
+	float c = cos(x * AZA_PI * 0.5f / radius);
+	return sinc(x) * c*c;
+}
+
 float cubic(float a, float b, float c, float d, float x) {
 	return b + 0.5f * x * (c - a + x * (2 * a - 5 * b + 4 * c - d + x * (3 * (b - c) + d - a)));
 }

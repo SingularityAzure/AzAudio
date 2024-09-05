@@ -117,6 +117,10 @@ typedef struct azaStreamData {
 	uint32_t myBufferFrames;
 	uint32_t mySamplerate;
 	uint32_t myChannels;
+	float resamplingHoldoverFrames;
+	// May point some offset into myBuffer, depending on resampling conditions
+	float *myBufferStart;
+	float *nativeBufferStart;
 
 	IAudioClient *pAudioClient;
 	union {
@@ -211,51 +215,14 @@ static uint32_t GetResampledFramecount(uint32_t dstSamplerate, uint32_t srcSampl
 }
 
 // TODO: Maybe make this configurable. Real hardcore audio quality requires a much larger window, which comes at a pretty significant cost. Maybe use SIMD instead and just make it bigger (with possibly an option for a low-latency resampling kernel that sacrifices the phase-frequency relationship).
-#define AZA_SINC_WINDOW 20
-
-static float lanczos(float x) {
-	float c = cos(x * AZA_PI / (AZA_SINC_WINDOW*2.0f));
-	return sinc(x) * c*c;
-}
+#define AZA_RESAMPLING_WINDOW 50
 
 #define AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING 128
 
-#define AZA_LANCZOS_TABLE_SIZE (AZA_SINC_WINDOW*AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING+1)
-
-static float LANCZOS_TABLE[AZA_LANCZOS_TABLE_SIZE];
-static float LANCZOS_FLUX = 1.0f;
+static azaKernel lanczosResamplingKernel;
 
 static void lanczosTableInit() {
-	LANCZOS_FLUX = 0.0f;
-	for (uint32_t i = 0; i < AZA_LANCZOS_TABLE_SIZE-1; i++) {
-		float value = lanczos((float)i / (float)AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING);
-		LANCZOS_FLUX += value;
-		LANCZOS_TABLE[i] = value;
-	}
-	LANCZOS_TABLE[AZA_LANCZOS_TABLE_SIZE-1] = 0.0f;
-	LANCZOS_FLUX = AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING * 0.5f / LANCZOS_FLUX;
-}
-
-static float lanczosTable(float x) {
-	if (x < 0.0f) x = -x;
-	x *= AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING;
-	uint32_t index = (uint32_t)x;
-	if (index >= AZA_LANCZOS_TABLE_SIZE) return 0.0f;
-	x -= (float)index;
-	return lerp(LANCZOS_TABLE[index], LANCZOS_TABLE[index+1], x);
-}
-
-static float sampleLanczos(float *src, float sample, int stride, int minFrame, int maxFrame) {
-	float result = 0.0f;
-	int start = (int)sample;
-	for (int i = start-AZA_SINC_WINDOW; i < start+AZA_SINC_WINDOW; i++) {
-		assert(i >= minFrame);
-		assert(i < maxFrame);
-		int index = AZA_CLAMP(i, minFrame, maxFrame-1);
-		float s = src[index * stride];
-		result += s * lanczosTable(((float)i - sample));
-	}
-	return result * LANCZOS_FLUX;
+	azaKernelMakeLanczos(&lanczosResamplingKernel, AZA_LANCZOS_SAMPLES_PER_ZERO_CROSSING, AZA_RESAMPLING_WINDOW);
 }
 
 // TODO: This works well in fairly trivial cases, but a better implementation needs to know about the actual function of each channel.
@@ -273,36 +240,47 @@ static void azaMixChannels(float *dst, int dstChannels, float *src, int srcChann
 	}
 }
 
+static void azaMixChannelsResampled(azaKernel *kernel, float factor, float *dst, int dstChannels, int dstFrames, float *src, int srcChannels, int srcFrameMin, int srcFrameMax, float srcSampleOffset) {
+	float amplification = AZA_MIN(1.0f, (float)dstChannels / (float)srcChannels);
+	memset(dst, 0, dstFrames * dstChannels * sizeof(float));
+	for (int dstC = 0; dstC < dstChannels; dstC++) {
+		float *dstOffset = dst + dstC;
+		for (int srcC = 0; srcC < AZA_MAX(1, srcChannels / dstChannels); srcC++) {
+			float *srcOffset = src + srcC + dstC * srcChannels / dstChannels;
+			azaResampleAdd(kernel, factor, amplification, dstOffset, dstChannels, dstFrames, srcOffset, srcChannels, srcFrameMin, srcFrameMax, srcSampleOffset);
+		}
+	}
+}
+
 static void azaStreamConvertFromNative(azaStreamData *data, uint32_t numFramesNative, uint32_t numFrames) {
 	azaStream *stream = data->stream;
 	// First, populate nativeBuffer, doing any type conversions necessary
-	// NOTE: We're leaving 2*AZA_SINC_WINDOW space at the beginning, allowing us to process the incoming data with exactly enough latency for resampling to occur with no artifacts. This block will have been copied from the end of the last chunk.
-	float *nativeBuffer = data->nativeBuffer + AZA_SINC_WINDOW * 2 * data->waveFormatExtensible.Format.nChannels;
+	// NOTE: We're leaving 2*AZA_RESAMPLING_WINDOW space at the beginning, allowing us to process the incoming data with exactly enough latency for resampling to occur with no artifacts. This block will have been copied from the end of the last chunk.
 	if (IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_PCM)) {
 		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
 			case 8: {
 				int8_t *src = (int8_t*)data->buffer;
 				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
-					nativeBuffer[i] = (float)src[i] / 127.0f;
+					data->nativeBufferStart[i] = (float)src[i] / 127.0f;
 				}
 			} break;
 			case 16: {
 				int16_t *src = (int16_t*)data->buffer;
 				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
-					nativeBuffer[i] = (float)src[i] / 32767.0f;
+					data->nativeBufferStart[i] = (float)src[i] / 32767.0f;
 				}
 			} break;
 			case 24: {
 				uint8_t *src = data->buffer;
 				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
 					// Little endian to the rescue :)
-					nativeBuffer[i] = (float)signExtend24Bit(*(uint32_t*)&src[i*3]) / 8388607.0f;
+					data->nativeBufferStart[i] = (float)signExtend24Bit(*(uint32_t*)&src[i*3]) / 8388607.0f;
 				}
 			} break;
 			case 32: {
 				int32_t *src = (int32_t*)data->buffer;
 				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
-					nativeBuffer[i] = (float)src[i] / 2147483647.0f;
+					data->nativeBufferStart[i] = (float)src[i] / 2147483647.0f;
 				}
 			} break;
 			default:
@@ -314,13 +292,13 @@ static void azaStreamConvertFromNative(azaStreamData *data, uint32_t numFramesNa
 		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
 			case 32: {
 				float *src = (float*)data->buffer;
-				memcpy(nativeBuffer, src, numFramesNative * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+				memcpy(data->nativeBufferStart, src, numFramesNative * data->waveFormatExtensible.Format.nChannels * sizeof(float));
 			} break;
 			case 64: {
 				// NOTE: Is this ever even a thing? This much precision is surely never needed...
 				double *src = (double*)data->buffer;
 				for (uint32_t i = 0; i < numFramesNative * data->waveFormatExtensible.Format.nChannels; i++) {
-					nativeBuffer[i] = (float)src[i];
+					data->nativeBufferStart[i] = (float)src[i];
 				}
 			} break;
 			default:
@@ -330,72 +308,76 @@ static void azaStreamConvertFromNative(azaStreamData *data, uint32_t numFramesNa
 	}
 	// Next, use nativeBuffer's contents to do any additional processing needed.
 	if (data->mySamplerate == data->waveFormatExtensible.Format.nSamplesPerSec) {
+		data->nativeBufferStart = data->nativeBuffer;
 		// No resampling necessary, so we don't need to use the extra buffer space and therefore aren't adding latency.
 		assert(numFrames == numFramesNative);
 		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
-			memcpy(data->myBuffer, nativeBuffer, sizeof(float) * numFrames * data->myChannels);
+			memcpy(data->myBuffer, data->nativeBufferStart, sizeof(float) * numFrames * data->myChannels);
 		} else {
 			// Do channel mixing
-			azaMixChannels(data->myBuffer, data->myChannels, nativeBuffer, data->waveFormatExtensible.Format.nChannels, numFrames);
+			azaMixChannels(data->myBuffer, data->myChannels, data->nativeBufferStart, data->waveFormatExtensible.Format.nChannels, numFrames);
 		}
 	} else {
-		// Move our reference position back by half of the entire resampling kernel window, adding AZA_SINC_WINDOW samples of latency, but allowing for artifact-free resampling.
-		nativeBuffer = data->nativeBuffer + AZA_SINC_WINDOW * data->waveFormatExtensible.Format.nChannels;
+		// Move our reference position back by half of the entire resampling kernel window, adding AZA_RESAMPLING_WINDOW samples of latency, but allowing for artifact-free resampling.
+		float *nativeBuffer = data->nativeBuffer + AZA_RESAMPLING_WINDOW * data->waveFormatExtensible.Format.nChannels;
+		float factor = (float)data->waveFormatExtensible.Format.nSamplesPerSec / (float)data->mySamplerate;
+		float srcSampleOffset = -data->resamplingHoldoverFrames;
+		data->resamplingHoldoverFrames += (float)numFrames * factor - (float)numFramesNative;
+		uint32_t holdoverFrames = (uint32_t)ceilf(data->resamplingHoldoverFrames);
+		data->resamplingHoldoverFrames -= (float)holdoverFrames;
 		// Resample
 		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
 			// Just resample
-			float factor = (float)data->waveFormatExtensible.Format.nSamplesPerSec / (float)data->mySamplerate;
 			uint32_t stride = data->myChannels;
 			for (uint32_t c = 0; c < data->myChannels; c++) {
 				float *dst = data->myBuffer + c;
 				float *src = nativeBuffer + c;
-				for (uint32_t i = 0; i < numFrames; i++) {
-					float s = (float)i * factor;
-					dst[i * stride] = sampleLanczos(src, s, stride, -AZA_SINC_WINDOW, numFramesNative + AZA_SINC_WINDOW);
-				}
+				azaResample(&lanczosResamplingKernel, factor, dst, stride, numFrames, src, stride, -AZA_RESAMPLING_WINDOW, numFramesNative + AZA_RESAMPLING_WINDOW, srcSampleOffset);
 			}
 		} else {
 			// Resample and do channel mixing
-			assert(0); // unimplemented
+			azaMixChannelsResampled(&lanczosResamplingKernel, factor, data->myBuffer, data->myChannels, numFrames, nativeBuffer, data->waveFormatExtensible.Format.nChannels, -AZA_RESAMPLING_WINDOW, numFramesNative + AZA_RESAMPLING_WINDOW, srcSampleOffset);
 		}
 		// Finally, copy the end of the buffer to the beginning for the next go around. (This is only necessary when resampling).
-		memcpy(data->nativeBuffer, data->nativeBuffer + numFramesNative * data->waveFormatExtensible.Format.nChannels, AZA_SINC_WINDOW * 2 * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+		memcpy(data->nativeBuffer, data->nativeBuffer + (numFramesNative - holdoverFrames) * data->waveFormatExtensible.Format.nChannels, (AZA_RESAMPLING_WINDOW * 2 + holdoverFrames) * data->waveFormatExtensible.Format.nChannels * sizeof(float));
+		data->nativeBufferStart = data->nativeBuffer + (AZA_RESAMPLING_WINDOW * 2 + holdoverFrames) * data->waveFormatExtensible.Format.nChannels;
 	}
 }
 
 static void azaStreamConvertToNative(azaStreamData *data, uint32_t numFramesNative, uint32_t numFrames) {
-	float *myBuffer;
 	if (data->mySamplerate == data->waveFormatExtensible.Format.nSamplesPerSec) {
-		myBuffer = data->myBuffer + AZA_SINC_WINDOW * 2 * data->myChannels;
+		data->myBufferStart = data->myBuffer;
 		assert(numFrames == numFramesNative);
 		// No resampling necessary, so we don't need to use the extra buffer space and therefore aren't adding latency.
 		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
-			memcpy(data->nativeBuffer, myBuffer, sizeof(float) * numFrames * data->myChannels);
+			memcpy(data->nativeBuffer, data->myBufferStart, sizeof(float) * numFrames * data->myChannels);
 		} else {
 			// Do channel mixing
-			azaMixChannels(data->nativeBuffer, data->waveFormatExtensible.Format.nChannels, myBuffer, data->myChannels, numFrames);
+			azaMixChannels(data->nativeBuffer, data->waveFormatExtensible.Format.nChannels, data->myBufferStart, data->myChannels, numFrames);
 		}
 	} else {
+		float factor = (float)data->mySamplerate / (float)data->waveFormatExtensible.Format.nSamplesPerSec;
+		float srcSampleOffset = -data->resamplingHoldoverFrames;
+		data->resamplingHoldoverFrames += (float)numFrames - (float)numFramesNative * factor;
+		uint32_t holdoverFrames = (uint32_t)ceilf(data->resamplingHoldoverFrames);
+		data->resamplingHoldoverFrames -= (float)holdoverFrames;
 		// Resample
-		myBuffer = data->myBuffer + AZA_SINC_WINDOW * data->myChannels;
+		float *myBuffer = data->myBuffer + AZA_RESAMPLING_WINDOW * data->myChannels;
 		if (data->myChannels == data->waveFormatExtensible.Format.nChannels) {
 			// Just resample
-			float factor = (float)data->mySamplerate / (float)data->waveFormatExtensible.Format.nSamplesPerSec;
 			uint32_t stride = data->myChannels;
 			for (uint32_t c = 0; c < data->myChannels; c++) {
 				float *src = myBuffer + c;
 				float *dst = data->nativeBuffer + c;
-				for (uint32_t i = 0; i < numFramesNative; i++) {
-					float s = (float)i * factor;
-					dst[i * stride] = sampleLanczos(src, s, stride, -AZA_SINC_WINDOW, numFrames + AZA_SINC_WINDOW);
-				}
+				azaResample(&lanczosResamplingKernel, factor, dst, stride, numFramesNative, src, stride, -AZA_RESAMPLING_WINDOW, numFrames + AZA_RESAMPLING_WINDOW, srcSampleOffset);
 			}
 		} else {
 			// Resample and do channel mixing
-			assert(0); // unimplemented
+			azaMixChannelsResampled(&lanczosResamplingKernel, factor, data->nativeBuffer, data->waveFormatExtensible.Format.nChannels, numFramesNative, myBuffer, data->myChannels, -AZA_RESAMPLING_WINDOW, numFrames + AZA_RESAMPLING_WINDOW, srcSampleOffset);
 		}
 		// Finally, copy the end of the buffer to the beginning for the next go around. (This is only necessary when resampling).
-		memcpy(data->myBuffer, data->myBuffer + numFrames * data->myChannels, AZA_SINC_WINDOW * 2 * data->myChannels * sizeof(float));
+		memcpy(data->myBuffer, data->myBuffer + (numFrames - holdoverFrames) * data->myChannels, (AZA_RESAMPLING_WINDOW * 2 + holdoverFrames) * data->myChannels * sizeof(float));
+		data->myBufferStart = data->myBuffer + (AZA_RESAMPLING_WINDOW * 2 + holdoverFrames) * data->myChannels;
 	}
 	if (IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_PCM)) {
 		switch (data->waveFormatExtensible.Format.wBitsPerSample) {
@@ -478,7 +460,7 @@ static void azaStreamProcess(azaStreamData *data) {
 		CHECK_RESULT("IAudioRenderClient::GetBuffer", return);
 		numFrames = GetResampledFramecount(data->mySamplerate, data->waveFormatExtensible.Format.nSamplesPerSec, numFramesNative);
 		if (data->myBuffer) {
-			samples = data->myBuffer + AZA_SINC_WINDOW * 2 * data->myChannels;
+			samples = data->myBufferStart;
 		} else {
 			samples = (float*)data->buffer;
 		}
@@ -827,8 +809,10 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 
 	if (!exactFormat) {
 		data->myBufferFrames = GetResampledFramecount(data->mySamplerate, data->waveFormatExtensible.Format.nSamplesPerSec, data->bufferFrames);
-		data->nativeBuffer = calloc((data->bufferFrames + AZA_SINC_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
-		data->myBuffer = calloc((data->myBufferFrames + AZA_SINC_WINDOW*2) * data->myChannels, sizeof(float));
+		data->nativeBuffer = calloc((data->bufferFrames + AZA_RESAMPLING_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
+		data->nativeBufferStart = data->nativeBuffer + (AZA_RESAMPLING_WINDOW * 2) * data->waveFormatExtensible.Format.nChannels;
+		data->myBuffer = calloc((data->myBufferFrames + AZA_RESAMPLING_WINDOW*2) * data->myChannels, sizeof(float));
+		data->myBufferStart = data->myBuffer + (AZA_RESAMPLING_WINDOW * 2) * data->myChannels;
 	} else {
 		data->myBuffer = NULL;
 	}

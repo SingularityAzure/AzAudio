@@ -732,3 +732,72 @@ int azaGate(azaBuffer buffer, azaGateData *data) {
 	}
 	return AZA_SUCCESS;
 }
+
+
+
+void azaKernelInit(azaKernel *kernel, int isSymmetrical, float length, float scale) {
+	assert(length > 0.0f);
+	assert(scale > 0.0f);
+	kernel->isSymmetrical = isSymmetrical;
+	kernel->length = length;
+	kernel->scale = scale;
+	kernel->size = (uint32_t)ceilf(length * scale);
+	kernel->table = calloc(kernel->size, sizeof(float));
+}
+
+void azaKernelDeinit(azaKernel *kernel) {
+	free(kernel->table);
+}
+
+float azaKernelSample(azaKernel *kernel, float x) {
+	if (kernel->isSymmetrical) {
+		if (x < 0.0f) x = -x;
+	} else {
+		if (x < 0.0f) return 0.0f;
+	}
+	x *= kernel->scale;
+	uint32_t index = (uint32_t)x;
+	if (index >= kernel->size-1) return 0.0f;
+	x -= (float)index;
+	return lerp(kernel->table[index], kernel->table[index+1], x);
+}
+
+void azaKernelMakeLanczos(azaKernel *kernel, float resolution, float radius) {
+	azaKernelInit(kernel, 1, 1+radius, resolution);
+	for (uint32_t i = 0; i < kernel->size-1; i++) {
+		kernel->table[i] = lanczos((float)i / resolution, radius);
+	}
+	kernel->table[kernel->size-1] = 0.0f;
+}
+
+float azaSampleWithKernel(float *src, int stride, int minFrame, int maxFrame, azaKernel *kernel, float pos) {
+	float result = 0.0f;
+	int start, end;
+	if (kernel->isSymmetrical) {
+		start = (int)pos - kernel->length + 1;
+		end = (int)pos + kernel->length;
+	} else {
+		start = (int)pos;
+		end = (int)pos + kernel->length;
+	}
+	for (int i = start; i < end; i++) {
+		int index = AZA_CLAMP(i, minFrame, maxFrame-1);
+		float s = src[index * stride];
+		result += s * azaKernelSample(kernel, (float)i - pos);
+	}
+	return result;
+}
+
+void azaResample(azaKernel *kernel, float factor, float *dst, int dstStride, int dstFrames, float *src, int srcStride, int srcFrameMin, int srcFrameMax, float srcSampleOffset) {
+	for (uint32_t i = 0; i < dstFrames; i++) {
+		float pos = (float)i * factor + srcSampleOffset;
+		dst[i * dstStride] = azaSampleWithKernel(src, srcStride, srcFrameMin, srcFrameMax, kernel, pos);
+	}
+}
+
+void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int dstStride, int dstFrames, float *src, int srcStride, int srcFrameMin, int srcFrameMax, float srcSampleOffset) {
+	for (uint32_t i = 0; i < dstFrames; i++) {
+		float pos = (float)i * factor + srcSampleOffset;
+		dst[i * dstStride] += amp * azaSampleWithKernel(src, srcStride, srcFrameMin, srcFrameMax, kernel, pos);
+	}
+}

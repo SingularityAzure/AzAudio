@@ -31,6 +31,9 @@ float cosc(float x);
 
 float linc(float x);
 
+// sinc with a hann window with a total size of 1+2*radius
+float lanczos(float x, float radius);
+
 static inline float lerp(float a, float b, float t) {
 	return a + (b - a) * t;
 }
