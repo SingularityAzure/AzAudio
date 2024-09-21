@@ -348,7 +348,7 @@ extern azaWorld azaWorldDefault;
 // Does simple angle-based spatialization of the source to map it to the channel layout.
 // world can be NULL, indicating to use azaWorldDefault.
 // Adds its sound to the existing signal in dstBuffer
-void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPos, float srcAmp, const azaWorld *world);
+void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
 
 
 

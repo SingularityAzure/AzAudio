@@ -119,7 +119,7 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	srcBuffer.samplerate = buffer.samplerate;
 	srcBuffer.samples = processingBuffer;
 	srcBuffer.stride = 1;
-	azaVec3 srcPos = {
+	azaVec3 srcPosStart = {
 		sin(angle),
 		0.0f,
 		cos(angle),
@@ -128,8 +128,13 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	if (angle > AZA_TAU) {
 		angle -= AZA_TAU;
 	}
+	azaVec3 srcPosEnd = {
+		sin(angle),
+		0.0f,
+		cos(angle),
+	};
 	memset(buffer.samples, 0, buffer.frames * buffer.channels * sizeof(float));
-	azaMixChannelsSimple(buffer, outputChannelLayout, srcBuffer, srcPos, 1.0f, nullptr);
+	azaMixChannelsSimple(buffer, outputChannelLayout, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
 	// if ((err = azaFilter(buffer, delayWetFilterData))) {
 	// 	return err;
 	// }
@@ -266,7 +271,7 @@ int main(int argumentCount, char** argumentValues) {
 		streamInput.channels = azaStreamGetChannels(&streamInput);
 		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
 		azaStream streamOutput = {0};
-		// streamOutput.channels = streamInput.channels;
+		streamOutput.channels = NUM_CHANNELS;
 		streamOutput.samplerate = streamInput.samplerate;
 		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {

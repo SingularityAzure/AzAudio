@@ -131,6 +131,46 @@ void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc
 	}
 }
 
+void azaBufferMixFade(azaBuffer dst, float volumeDstStart, float volumeDstEnd, azaBuffer src, float volumeSrcStart, float volumeSrcEnd) {
+	if (volumeDstStart == volumeDstEnd && volumeSrcStart == volumeSrcEnd) {
+		azaBufferMix(dst, volumeDstStart, src, volumeSrcStart);
+		return;
+	}
+	assert(dst.frames == src.frames);
+	assert(dst.channels == src.channels);
+	float volumeDstDelta = volumeDstEnd - volumeDstStart;
+	float volumeSrcDelta = volumeSrcEnd - volumeSrcStart;
+	float framesF = (float)dst.frames;
+	if (volumeDstDelta == 0.0f) {
+		if (volumeDstStart == 1.0f) {
+			for (size_t i = 0; i < dst.frames; i++) {
+				float t = (float)i / framesF;
+				float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
+				for (size_t c = 0; c < dst.channels; c++) {
+					dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] + src.samples[i * src.stride + c] * volumeSrc;
+				}
+			}
+		} else {
+			for (size_t i = 0; i < dst.frames; i++) {
+				float t = (float)i / framesF;
+				float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
+				for (size_t c = 0; c < dst.channels; c++) {
+					dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDstStart + src.samples[i * src.stride + c] * volumeSrc;
+				}
+			}
+		}
+	} else {
+		for (size_t i = 0; i < dst.frames; i++) {
+			float t = (float)i / framesF;
+			float volumeDst = volumeDstStart + volumeDstDelta * t;
+			float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
+			for (size_t c = 0; c < dst.channels; c++) {
+				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDst + src.samples[i * src.stride + c] * volumeSrc;
+			}
+		}
+	}
+}
+
 void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc) {
 	assert(dst.frames == src.frames);
 	assert(channelDst < dst.channels);
@@ -815,7 +855,7 @@ void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int 
 	}
 }
 
-void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPos, float srcAmp, const azaWorld *world) {
+void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
 	assert(dstChannelLayout.count <= AZA_MAX_CHANNEL_POSITIONS);
 	assert(dstBuffer.channels == dstChannelLayout.count);
 	assert(dstBuffer.samplerate == srcBuffer.samplerate);
@@ -823,28 +863,32 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 	assert(srcBuffer.channels == 1);
 	if (dstBuffer.channels == 1) {
 		// Nothing to do but put it in there I guess
-		azaBufferMix(dstBuffer, 1.0f, srcBuffer, srcAmp);
+		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, srcBuffer, srcAmpStart, srcAmpEnd);
 		return;
 	}
 	if (world == NULL) {
 		world = &azaWorldDefault;
 	}
 	// Transform srcPos to headspace
-	srcPos = azaMulVec3Mat3(azaSubVec3(srcPos, world->origin), world->orientation);
-	// Make direction into spherical coordinates
-	float anglePhi, angleTheta, radius;
-	// Extract radius and normalize srcPos
-	radius = azaVec3Norm(srcPos);
-	if (radius < 0.0001f) {
-		// Default forward in case our radius is tiny or even zero :O
-		// TODO: Maybe handle short radii by making the sound come from all directions? Also make sure transitions are smooth.
-		srcPos = (azaVec3) { 0.0f, 0.0f, 1.0f };
-	} else {
-		srcPos = azaDivVec3Scalar(srcPos, radius);
+	srcPosStart = azaMulVec3Mat3(azaSubVec3(srcPosStart, world->origin), world->orientation);
+	srcPosEnd = azaMulVec3Mat3(azaSubVec3(srcPosEnd, world->origin), world->orientation);
+	// How much of the signal to add to all channels in case srcPos is crossing close to the head
+	float allChannelAddAmpStart = 0.0f;
+	float allChannelAddAmpEnd = 0.0f;
+	{
+		float norm = azaVec3Norm(srcPosStart);
+		if (norm < 0.5f) {
+			allChannelAddAmpStart = (0.5f - norm) * 2.0f;
+		} else {
+			srcPosStart = azaDivVec3Scalar(srcPosStart, norm);
+		}
+		norm = azaVec3Norm(srcPosEnd);
+		if (norm < 0.5f) {
+			allChannelAddAmpEnd = (0.5f - norm) * 2.0f;
+		} else {
+			srcPosEnd = azaDivVec3Scalar(srcPosEnd, norm);
+		}
 	}
-	// We use z-forward, y-up, x-right
-	anglePhi = AZA_RAD_TO_DEG(atan2f(srcPos.x, srcPos.z));
-	angleTheta = AZA_RAD_TO_DEG(asinf(clampf(srcPos.y, -1.0f, 1.0f)));
 
 	// Gather some metadata about the channel layout
 	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, hasAerial = 0;
@@ -890,103 +934,125 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 				break;
 		}
 	}
+	uint8_t nonSubChannels = hasSub ? dstChannelLayout.count-1 : dstChannelLayout.count;
 	// Angles are relative to front center, to be signed later
 	// These relate to anglePhi above
-	float angleFront = 60.0f, angleMidFront = 30.0f, angleSide = 90.0f, angleBack = 130.0f;
+	float angleFront = AZA_DEG_TO_RAD(75.0f), angleMidFront = AZA_DEG_TO_RAD(30.0f), angleSide = AZA_DEG_TO_RAD(90.0f), angleBack = AZA_DEG_TO_RAD(130.0f);
 	if (hasFront && hasMidFront && hasSide && hasBack) {
 		// Standard 8 or 9 speaker layout
-		angleFront = 60.0f;
-		angleMidFront = 30.0f;
-		angleBack = 140.0f;
+		angleFront = AZA_DEG_TO_RAD(60.0f);
+		angleMidFront = AZA_DEG_TO_RAD(30.0f);
+		angleBack = AZA_DEG_TO_RAD(140.0f);
 	} else if (hasFront && hasSide && hasBack) {
 		// Standard 6 or 7 speaker layout
-		angleFront = 30.0f;
-		angleBack = 140.0f;
+		angleFront = AZA_DEG_TO_RAD(60.0f);
+		angleBack = AZA_DEG_TO_RAD(140.0f);
 	} else if (hasFront && hasBack) {
 		// Standard 4 or 5 speaker layout
-		angleFront = 30.0f;
-		angleBack = 115.0f;
+		angleFront = AZA_DEG_TO_RAD(60.0f);
+		angleBack = AZA_DEG_TO_RAD(115.0f);
 	} else if (hasFront) {
 		// Standard 2 or 3 speaker layout
-		angleFront = 60.0f;
+		angleFront = AZA_DEG_TO_RAD(75.0f);
 	} else if (hasBack) {
 		// Weird, will probably never actually happen, but we can work with it
-		angleBack = 110.0f;
+		angleBack = AZA_DEG_TO_RAD(110.0f);
 	} else {
 		// We're confused, just do anything
-		angleFront = 45.0f;
-		angleMidFront = 22.5f;
-		angleSide = 90.0f;
-		angleBack = 120.0f;
+		angleFront = AZA_DEG_TO_RAD(45.0f);
+		angleMidFront = AZA_DEG_TO_RAD(22.5f);
+		angleSide = AZA_DEG_TO_RAD(90.0f);
+		angleBack = AZA_DEG_TO_RAD(120.0f);
 	}
-	// Make it easier to find the correct channels to blend
-	const uint8_t positionArcFloor[] = {
-		AZA_POS_CENTER_BACK,
-		AZA_POS_LEFT_BACK,
-		AZA_POS_LEFT_SIDE,
-		AZA_POS_LEFT_FRONT,
-		AZA_POS_LEFT_CENTER_FRONT,
-		AZA_POS_CENTER_FRONT,
-		AZA_POS_RIGHT_CENTER_FRONT,
-		AZA_POS_RIGHT_FRONT,
-		AZA_POS_RIGHT_SIDE,
-		AZA_POS_RIGHT_BACK,
-		AZA_POS_CENTER_BACK,
-	};
-	const float angleArcFloor[] = {
-		-180.0f,
-		-angleBack,
-		-angleSide,
-		-angleFront,
-		-angleMidFront,
-		0.0f,
-		angleMidFront,
-		angleFront,
-		angleSide,
-		angleBack,
-		180.0f,
-	};
-	assert(sizeof(positionArcFloor) == sizeof(angleArcFloor) / sizeof(float));
-	// Map the floor speaker positions in an arc from back left to front center to back right to the actual channel index in dstBuffer
-	uint8_t channelMapFloor[16];
-	// Angle representing physical position of the speaker
-	float channelAngleFloor[16];
-	uint8_t channelMapFloorCount = 0;
-	for (uint32_t i = 0; i < sizeof(positionArcFloor); i++) {
-		uint8_t pos = positionArcFloor[i];
-		for (uint32_t c = 0; c < dstChannelLayout.count; c++) {
-			if (dstChannelLayout.positions[c] == pos) {
-				channelMapFloor[channelMapFloorCount] = c;
-				channelAngleFloor[channelMapFloorCount] = angleArcFloor[i];
-				channelMapFloorCount++;
+
+	// Position our channel vectors
+	float channelAmpsStart[AZA_MAX_CHANNEL_POSITIONS];
+	float channelAmpsEnd[AZA_MAX_CHANNEL_POSITIONS];
+	memset(channelAmpsStart, 0, sizeof(channelAmpsStart));
+	memset(channelAmpsEnd, 0, sizeof(channelAmpsEnd));
+	float totalMagnitudeStart = 0.1f;
+	float totalMagnitudeEnd = 0.1f;
+	float maxAmpStart = 0.0f;
+	float maxAmpEnd = 0.0f;
+	for (uint8_t i = 0; i < dstChannelLayout.count; i++) {
+		azaVec3 channelVector;
+		switch (dstChannelLayout.positions[i]) {
+			case AZA_POS_LEFT_FRONT:
+				channelVector = (azaVec3) { sinf(-angleFront), 0.0f, cosf(-angleFront) };
 				break;
-			}
+			case AZA_POS_CENTER_FRONT:
+				channelVector = (azaVec3) { 0.0f, 0.0f, 1.0f };
+				break;
+			case AZA_POS_RIGHT_FRONT:
+				channelVector = (azaVec3) { sinf(angleFront), 0.0f, cosf(angleFront) };
+				break;
+			case AZA_POS_LEFT_CENTER_FRONT:
+				channelVector = (azaVec3) { sinf(-angleMidFront), 0.0f, cosf(-angleMidFront) };
+				break;
+			case AZA_POS_RIGHT_CENTER_FRONT:
+				channelVector = (azaVec3) { sinf(angleMidFront), 0.0f, cosf(angleMidFront) };
+				break;
+			case AZA_POS_LEFT_BACK:
+				channelVector = (azaVec3) { sinf(-angleBack), 0.0f, cosf(-angleBack) };
+				break;
+			case AZA_POS_CENTER_BACK:
+				channelVector = (azaVec3) { 0.0f, 0.0f, -1.0f };
+				break;
+			case AZA_POS_RIGHT_BACK:
+				channelVector = (azaVec3) { sinf(angleBack), 0.0f, cosf(angleBack) };
+				break;
+			case AZA_POS_LEFT_SIDE:
+				channelVector = (azaVec3) { sinf(-angleSide), 0.0f, cosf(-angleSide) };
+				break;
+			case AZA_POS_RIGHT_SIDE:
+				channelVector = (azaVec3) { sinf(angleSide), 0.0f, cosf(angleSide) };
+				break;
+			case AZA_POS_CENTER_TOP:
+				channelVector = (azaVec3) { 0.0f, 1.0f, 0.0f };
+				break;
+			case AZA_POS_LEFT_FRONT_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { sinf(-angleFront), 1.0f, cosf(-angleFront) });
+				break;
+			case AZA_POS_CENTER_FRONT_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, 1.0f });
+				break;
+			case AZA_POS_RIGHT_FRONT_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { sinf(angleFront), 1.0f, cosf(angleFront) });
+				break;
+			case AZA_POS_LEFT_BACK_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { sinf(-angleBack), 1.0f, cosf(-angleBack) });
+				break;
+			case AZA_POS_CENTER_BACK_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, -1.0f });
+				break;
+			case AZA_POS_RIGHT_BACK_TOP:
+				channelVector = azaVec3Normalized((azaVec3) { sinf(angleBack), 1.0f, cosf(angleBack) });
+				break;
+			default: // This includes AZA_POS_SUBWOOFER
+				channelAmpsStart[i] = 1.0f;
+				channelAmpsEnd[i] = 1.0f;
+				continue;
 		}
+		channelAmpsStart[i] = 0.5f + 0.5f * azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		channelAmpsEnd[i] = 0.5f + 0.5f * azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+		// if (channelAmpsStart[i] < 0.0f) channelAmpsStart[i] *= -0.1f;
+		// if (channelAmpsEnd[i] < 0.0f) channelAmpsEnd[i] *= -0.1f;
+		channelAmpsStart[i] = 0.1f + 0.9f * channelAmpsStart[i];
+		channelAmpsEnd[i] = 0.1f + 0.9f * channelAmpsEnd[i];
+		totalMagnitudeStart += azaSqr(channelAmpsStart[i]);
+		totalMagnitudeEnd += azaSqr(channelAmpsEnd[i]);
 	}
-	// Find the 2 channels to lerp based on angle
-	uint8_t dstChannels[2];
-	float dstChannelT;
-	uint8_t found = 0;
-	for (uint32_t i = 1; i < channelMapFloorCount; i++) {
-		if (channelAngleFloor[i-1] <= anglePhi && channelAngleFloor[i] >= anglePhi) {
-			dstChannels[0] = channelMapFloor[i-1];
-			dstChannels[1] = channelMapFloor[i];
-			dstChannelT = linstepf(anglePhi, channelAngleFloor[i-1], channelAngleFloor[i]);
-			found = 1;
-			break;
-		}
-	}
-	if (!found) {
-		// Special case for wrapping around, guaranteed to be the last and first channels
-		dstChannels[0] = channelMapFloor[channelMapFloorCount-1];
-		dstChannels[1] = channelMapFloor[0];
-		dstChannelT = linstepf(anglePhi > 0 ? anglePhi : (anglePhi + 360.0f), channelAngleFloor[channelMapFloorCount-1], channelAngleFloor[0] + 360.0f);
-	}
-	// TODO: Ignoring aerials for now
+
 	azaBuffer dst = dstBuffer;
 	dst.channels = 1;
-	dst.samples = dstBuffer.samples + dstChannels[0];
-	azaBufferMix(dst, 1.0f, srcBuffer, srcAmp * (1.0f - dstChannelT));
-	dst.samples = dstBuffer.samples + dstChannels[1];
-	azaBufferMix(dst, 1.0f, srcBuffer, srcAmp * dstChannelT);
+	for (uint8_t i = 0; i < dstChannelLayout.count; i++) {
+		dst.samples = dstBuffer.samples + i;
+		float ampStart = srcAmpStart * channelAmpsStart[i];
+		float ampEnd = srcAmpEnd * channelAmpsEnd[i];
+		if (dstChannelLayout.positions[i] != AZA_POS_SUBWOOFER) {
+			ampStart /= sqrtf(totalMagnitudeStart);
+			ampEnd /= sqrtf(totalMagnitudeEnd);
+		}
+		azaBufferMixFade(dst, 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
+	}
 }

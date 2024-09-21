@@ -21,6 +21,14 @@ static const float AZA_PI = 3.14159265359f;
 #define AZA_DEG_TO_RAD(x) ((x) * AZA_PI / 180.0f)
 #define AZA_RAD_TO_DEG(x) ((x) * 180.0f / AZA_PI)
 
+static inline float azaAbs(float a) {
+	return a < 0.0f ? -a : a;
+}
+
+static inline float azaSqr(float a) {
+	return a * a;
+}
+
 typedef union azaVec3 {
 	struct {
 		float x, y, z;
@@ -88,6 +96,19 @@ static inline float azaVec3Norm(azaVec3 a) {
 // Euclidian norm squared
 static inline float azaVec3NormSqr(azaVec3 a) {
 	return a.x * a.x + a.y * a.y + a.z * a.z;
+}
+
+// Use this if the norm of a could be very small
+static inline azaVec3 azaVec3NormalizedDef(azaVec3 a, float epsilon, azaVec3 def) {
+	float norm = azaVec3Norm(a);
+	if (norm < epsilon) {
+		return def;
+	}
+	return azaDivVec3Scalar(a, norm);
+}
+
+static inline azaVec3 azaVec3Normalized(azaVec3 a) {
+	return azaDivVec3Scalar(a, azaVec3Norm(a));
 }
 
 // 3x3 matrix with the conventions matching GLSL (same conventions as AzCore)
