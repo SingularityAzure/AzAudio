@@ -34,9 +34,9 @@ typedef struct azaStream {
 	const char *deviceName;
 	azaDeviceInterface deviceInterface;
 	// Leave at 0 for device default
-	size_t samplerate;
+	uint32_t samplerate;
 	// Leave at 0 for device default
-	size_t channels;
+	uint32_t channels;
 	fp_azaMixCallback mixCallback;
 	void *userdata;
 } azaStream;
@@ -55,6 +55,9 @@ extern fp_azaStreamGetSamplerate azaStreamGetSamplerate;
 
 typedef size_t (*fp_azaStreamGetChannels)(azaStream *stream);
 extern fp_azaStreamGetChannels azaStreamGetChannels;
+
+typedef azaChannelLayout (*fp_azaStreamGetChannelLayout)(azaStream *stream);
+extern fp_azaStreamGetChannelLayout azaStreamGetChannelLayout;
 
 typedef size_t (*fp_azaGetDeviceCount)(azaDeviceInterface interface);
 extern fp_azaGetDeviceCount azaGetDeviceCount;

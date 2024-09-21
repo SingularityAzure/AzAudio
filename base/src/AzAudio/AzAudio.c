@@ -35,6 +35,11 @@ int azaInit() {
 		}
 	}
 	AZA_LOG_INFO("AzAudio Version: " AZA_VERSION_FORMAT_STR "\n", AZA_VERSION_ARGS);
+	memset(&azaWorldDefault, 0, sizeof(azaWorldDefault));
+	azaWorldDefault.orientation.right   = (azaVec3) { 1.0f, 0.0f, 0.0f };
+	azaWorldDefault.orientation.up      = (azaVec3) { 0.0f, 1.0f, 0.0f };
+	azaWorldDefault.orientation.forward = (azaVec3) { 0.0f, 0.0f, 1.0f };
+	azaWorldDefault.speedOfSound = 343.0f;
 	return azaBackendInit();
 }
 

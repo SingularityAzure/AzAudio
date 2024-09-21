@@ -8,13 +8,12 @@
 #define AZAUDIO_DSP_H
 
 #include <stdlib.h>
-#include <stdint.h>
+
+#include "header_utils.h"
+#include "math.h"
 
 #ifdef __cplusplus
 extern "C" {
-#define AZA_CLITERAL(s) s
-#else
-#define AZA_CLITERAL(s) (s)
 #endif
 
 #define AZAUDIO_RMS_SAMPLES 128
@@ -23,6 +22,49 @@ extern "C" {
 #define AZAUDIO_SAMPLER_TRANSITION_FRAMES 128
 
 
+// TODO: The most extreme setups can have 20 channels, but there may be no way to actually use that many channels effectively without a way to distinguish them (and the below are all you can get from the MMDevice API on Windows afaik). Should there be more information available, this part of the API will grow.
+// TODO: Find a way to get more precise speaker placement information, if that's even possible.
+/* These roughly correspond to the following physical positions.
+Floor:
+    6 2 7
+  0       1
+ 9    H    10
+  4   8   5
+
+Ceiling:
+  12 13 14
+     H
+  15 16 17
+*/
+enum azaPosition {
+	AZA_POS_LEFT_FRONT         = 0,
+	AZA_POS_RIGHT_FRONT        = 1,
+	AZA_POS_CENTER_FRONT       = 2,
+	AZA_POS_SUBWOOFER          = 3,
+	AZA_POS_LEFT_BACK          = 4,
+	AZA_POS_RIGHT_BACK         = 5,
+	AZA_POS_LEFT_CENTER_FRONT  = 6,
+	AZA_POS_RIGHT_CENTER_FRONT = 7,
+	AZA_POS_CENTER_BACK        = 8,
+	AZA_POS_LEFT_SIDE          = 9,
+	AZA_POS_RIGHT_SIDE         =10,
+	AZA_POS_CENTER_TOP         =11,
+	AZA_POS_LEFT_FRONT_TOP     =12,
+	AZA_POS_CENTER_FRONT_TOP   =13,
+	AZA_POS_RIGHT_FRONT_TOP    =14,
+	AZA_POS_LEFT_BACK_TOP      =15,
+	AZA_POS_CENTER_BACK_TOP    =16,
+	AZA_POS_RIGHT_BACK_TOP     =17,
+};
+// NOTE: This is more than we should ever see in reality, and definitely more than can be uniquely represented by the above positions. We're reserving more for later.
+#define AZA_MAX_CHANNEL_POSITIONS 23
+#define AZA_POS_ENUM_COUNT (AZA_POS_RIGHT_BACK_TOP+1)
+
+typedef struct azaChannelLayout {
+	uint8_t count;
+	uint8_t positions[AZA_MAX_CHANNEL_POSITIONS];
+} azaChannelLayout;
+
 
 // Buffer used by DSP functions for their input/output
 typedef struct azaBuffer {
@@ -30,14 +72,14 @@ typedef struct azaBuffer {
 	// one frame is a single sample from each channel, one after the other
 	float *samples;
 	// how many samples there are in a single channel
-	size_t frames;
+	uint32_t frames;
 	// distance between samples from one channel in number of floats
-	size_t stride;
+	uint32_t stride;
 	// how many channels are stored in this buffer for user-created buffers
 	// or how many channels should be accessed by DSP functions
-	size_t channels;
+	uint32_t channels;
 	// samples per second, used by DSP functions that rely on timing
-	size_t samplerate;
+	uint32_t samplerate;
 } azaBuffer;
 // You must first set frames and channels before calling this to allocate samples.
 // If samples are externally-managed, you don't have to do this.
@@ -48,9 +90,9 @@ int azaBufferDeinit(azaBuffer *data);
 void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc);
 
 // Copies the contents of one channel of src into dst
-void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc);
+void azaBufferCopyChannel(azaBuffer dst, uint32_t channelDst, azaBuffer src, uint32_t channelSrc);
 
-static inline azaBuffer azaBufferOneSample(float *sample, size_t samplerate) {
+static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 	return AZA_CLITERAL(azaBuffer) {
 		/* .samples = */ sample,
 		/* .frames = */ 1,
@@ -290,6 +332,23 @@ void azaResample(azaKernel *kernel, float factor, float *dst, int dstStride, int
 
 // Same as azaResample, except the resampled values are added to dst instead of replacing them. Every sample is multiplied by amp before being added.
 void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int dstStride, int dstFrames, float *src, int srcStride, int srcFrameMin, int srcFrameMax, float srcSampleOffset);
+
+
+typedef struct azaWorld {
+	// Position of our ears
+	azaVec3 origin;
+	// Must be an orthogonal matrix
+	azaMat3 orientation;
+	// Speed of sound in units per second.
+	// Default: 343.0f (speed of sound in dry air at 20C in m/s)
+	float speedOfSound;
+} azaWorld;
+extern azaWorld azaWorldDefault;
+
+// Does simple angle-based spatialization of the source to map it to the channel layout.
+// world can be NULL, indicating to use azaWorldDefault.
+// Adds its sound to the existing signal in dstBuffer
+void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPos, float srcAmp, const azaWorld *world);
 
 
 

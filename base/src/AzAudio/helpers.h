@@ -34,13 +34,29 @@ float linc(float x);
 // sinc with a hann window with a total size of 1+2*radius
 float lanczos(float x, float radius);
 
+float clampf(float a, float min, float max);
+
 static inline float lerp(float a, float b, float t) {
 	return a + (b - a) * t;
 }
 
-float cubic(float a, float b, float c, float d, float x);
+static inline float linstepf(float a, float min, float max) {
+	return clampf((a - min) / (max - min), 0.0f, 1.0f);
+}
 
-float clampf(float a, float minimum, float maximum);
+// Like a % max except the answer is always in the range [0; max) even if the input is negative
+static inline int wrapi(int a, int max) {
+	assert(max > 0);
+	if (a < 0) {
+		return (a + 1) % max + max-1;
+	} else if (a > 0) {
+		return a % max;
+	} else {
+		return 0;
+	}
+}
+
+float cubic(float a, float b, float c, float d, float x);
 
 float aza_db_to_ampf(float db);
 
@@ -65,9 +81,6 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 
 // Returns the 32-bit signed integer representation of a 24-bit integer stored in the lower 24 bits of a u32. You don't have to worry about what's in the high 8 bits as they'll be masked out.
 int32_t signExtend24Bit(uint32_t value);
-
-static const float AZA_TAU = 6.283185307179586f;
-static const float AZA_PI = 3.14159265359f;
 
 #ifndef AZA_LIKELY
 #ifdef __GNUC__

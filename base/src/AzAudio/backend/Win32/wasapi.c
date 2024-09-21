@@ -172,6 +172,37 @@ static size_t azaStreamGetChannelsWASAPI(azaStream *stream) {
 	return data->myChannels;
 }
 
+static azaChannelLayout azaStreamGetChannelLayoutWASAPI(azaStream *stream) {
+	#define CHECK_CHANNEL(msPos, myPos)\
+	if (data->waveFormatExtensible.dwChannelMask & (msPos)) {\
+		layout.positions[layout.count++] = myPos;\
+	}
+
+	azaStreamData *data = stream->data;
+	azaChannelLayout layout;
+	layout.count = 0;
+	CHECK_CHANNEL(SPEAKER_FRONT_LEFT, AZA_POS_LEFT_FRONT);
+	CHECK_CHANNEL(SPEAKER_FRONT_RIGHT, AZA_POS_RIGHT_FRONT);
+	CHECK_CHANNEL(SPEAKER_FRONT_CENTER, AZA_POS_CENTER_FRONT);
+	CHECK_CHANNEL(SPEAKER_LOW_FREQUENCY, AZA_POS_SUBWOOFER);
+	CHECK_CHANNEL(SPEAKER_BACK_LEFT, AZA_POS_LEFT_BACK);
+	CHECK_CHANNEL(SPEAKER_BACK_RIGHT, AZA_POS_RIGHT_BACK);
+	CHECK_CHANNEL(SPEAKER_FRONT_LEFT_OF_CENTER, AZA_POS_LEFT_CENTER_FRONT);
+	CHECK_CHANNEL(SPEAKER_FRONT_RIGHT_OF_CENTER, AZA_POS_RIGHT_CENTER_FRONT);
+	CHECK_CHANNEL(SPEAKER_BACK_CENTER, AZA_POS_CENTER_BACK);
+	CHECK_CHANNEL(SPEAKER_SIDE_LEFT, AZA_POS_LEFT_SIDE);
+	CHECK_CHANNEL(SPEAKER_SIDE_RIGHT, AZA_POS_RIGHT_SIDE);
+	CHECK_CHANNEL(SPEAKER_TOP_CENTER, AZA_POS_CENTER_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_FRONT_LEFT, AZA_POS_LEFT_FRONT_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_FRONT_CENTER, AZA_POS_CENTER_FRONT_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_FRONT_RIGHT, AZA_POS_RIGHT_FRONT_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_BACK_LEFT, AZA_POS_LEFT_BACK_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_BACK_CENTER, AZA_POS_CENTER_BACK_TOP);
+	CHECK_CHANNEL(SPEAKER_TOP_BACK_RIGHT, AZA_POS_RIGHT_BACK_TOP);
+	#undef CHECK_CHANNEL
+	return layout;
+}
+
 static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCount, EDataFlow dataFlow, const char *poolTag) {
 #define FAIL_ACTION result = AZA_MAX_DEVICES; goto error
 	size_t result = AZA_MAX_DEVICES;
@@ -777,6 +808,7 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 	} else if (hResult == S_OK) {
 		// Our exact format is supported
 		data->waveFormatExtensible = desiredFormat;
+		data->waveFormatExtensible.dwChannelMask = defaultFormat->dwChannelMask;
 		AZA_LOG_INFO("Device \"%s\" supports the exact format desired :)\n", deviceInfo->name);
 		exactFormat = 1;
 	} else {
@@ -888,6 +920,7 @@ int azaBackendWASAPIInit() {
 	azaStreamGetDeviceName = azaStreamGetDeviceNameWASAPI;
 	azaStreamGetSamplerate = azaStreamGetSamplerateWASAPI;
 	azaStreamGetChannels = azaStreamGetChannelsWASAPI;
+	azaStreamGetChannelLayout = azaStreamGetChannelLayoutWASAPI;
 	azaGetDeviceCount = azaGetDeviceCountWASAPI;
 	azaGetDeviceName = azaGetDeviceNameWASAPI;
 	azaGetDeviceChannels = azaGetDeviceChannelsWASAPI;

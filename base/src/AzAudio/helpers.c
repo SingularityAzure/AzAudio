@@ -72,8 +72,8 @@ size_t aza_grow(size_t startSize, size_t minSize, size_t alignment) {
 	return startSize;
 }
 
-float clampf(float a, float minimum, float maximum) {
-	return a < minimum ? minimum : (a > maximum ? maximum : a);
+float clampf(float a, float min, float max) {
+	return a < min ? min : (a > max ? max : a);
 }
 
 float aza_db_to_ampf(float db) {
