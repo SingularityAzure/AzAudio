@@ -66,7 +66,6 @@ size_t lastInputBufferSize=0;
 size_t numOutputBuffers=0;
 size_t numInputBuffers=0;
 
-azaChannelLayout outputChannelLayout = {0};
 float angle = 0.0f;
 
 int mixCallbackOutput(azaBuffer buffer, void *userData) {
@@ -114,7 +113,7 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	}
 	int err;
 	azaBuffer srcBuffer;
-	srcBuffer.channels = 1;
+	srcBuffer.channels.count = 1;
 	srcBuffer.frames = buffer.frames;
 	srcBuffer.samplerate = buffer.samplerate;
 	srcBuffer.samples = processingBuffer;
@@ -135,8 +134,8 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		0.0f,
 		// 0.0f,
 	};
-	memset(buffer.samples, 0, buffer.frames * buffer.channels * sizeof(float));
-	azaSpatializeSimple(buffer, outputChannelLayout, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
+	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
+	azaSpatializeSimple(buffer, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
 	// if ((err = azaFilter(buffer, delayWetFilterData))) {
 	// 	return err;
 	// }
@@ -267,23 +266,22 @@ int main(int argumentCount, char** argumentValues) {
 		azaStream streamInput = {0};
 		streamInput.mixCallback = mixCallbackInput;
 		streamInput.deviceInterface = AZA_INPUT;
-		streamInput.channels = 1;
+		streamInput.channels = azaChannelLayoutMono();
 		// streamInput.samplerate = 44100/4;
 		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init input stream!");
 		}
 		// This ensures that if anything changes in the backend, our input stream will always have the same channels and samplerate.
 		// TODO: Make this a flag somewhere, perhaps in azaStreamInit
-		streamInput.channels = azaStreamGetChannels(&streamInput);
+		streamInput.channels = azaStreamGetChannelLayout(&streamInput);
 		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
 		azaStream streamOutput = {0};
-		streamOutput.channels = NUM_CHANNELS;
+		streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
 		streamOutput.samplerate = streamInput.samplerate;
 		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init output stream!");
 		}
-		outputChannelLayout = azaStreamGetChannelLayout(&streamOutput);
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
 		azaStreamDeinit(&streamInput);

@@ -36,7 +36,8 @@ typedef struct azaStream {
 	// Leave at 0 for device default
 	uint32_t samplerate;
 	// Leave at 0 for device default
-	uint32_t channels;
+	// formFactor is ignored
+	azaChannelLayout channels;
 	fp_azaMixCallback mixCallback;
 	void *userdata;
 } azaStream;
@@ -52,9 +53,6 @@ extern fp_azaStreamGetDeviceName azaStreamGetDeviceName;
 
 typedef size_t (*fp_azaStreamGetSamplerate)(azaStream *stream);
 extern fp_azaStreamGetSamplerate azaStreamGetSamplerate;
-
-typedef size_t (*fp_azaStreamGetChannels)(azaStream *stream);
-extern fp_azaStreamGetChannels azaStreamGetChannels;
 
 typedef azaChannelLayout (*fp_azaStreamGetChannelLayout)(azaStream *stream);
 extern fp_azaStreamGetChannelLayout azaStreamGetChannelLayout;

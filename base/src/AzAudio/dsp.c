@@ -29,7 +29,7 @@ thread_local size_t sideBuffersInUse = 0;
 
 azaWorld azaWorldDefault;
 
-static azaBuffer azaPushSideBuffer(size_t frames, size_t channels, size_t samplerate) {
+static azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate) {
 	assert(sideBuffersInUse < AZA_MAX_SIDE_BUFFERS);
 	azaBuffer *buffer = &sideBufferPool[sideBuffersInUse];
 	size_t *capacity = &sideBufferCapacity[sideBuffersInUse];
@@ -41,7 +41,7 @@ static azaBuffer azaPushSideBuffer(size_t frames, size_t channels, size_t sample
 	}
 	buffer->frames = frames;
 	buffer->stride = channels;
-	buffer->channels = channels;
+	buffer->channels.count = channels;
 	buffer->samplerate = samplerate;
 	if (*capacity < capacityNeeded) {
 		azaBufferInit(buffer);
@@ -62,7 +62,7 @@ static int azaCheckBuffer(azaBuffer buffer) {
 	if (buffer.samples == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	}
-	if (buffer.channels < 1) {
+	if (buffer.channels.count < 1) {
 		return AZA_ERROR_INVALID_CHANNEL_COUNT;
 	}
 	if (buffer.frames < 1) {
@@ -78,8 +78,8 @@ int azaBufferInit(azaBuffer *data) {
 		data->samples = NULL;
 		return AZA_ERROR_INVALID_FRAME_COUNT;
 	}
-	data->samples = (float*)malloc(sizeof(float) * data->frames * data->channels);
-	data->stride = data->channels;
+	data->samples = (float*)malloc(sizeof(float) * data->frames * data->channels.count);
+	data->stride = data->channels.count;
 	return AZA_SUCCESS;
 }
 
@@ -95,36 +95,37 @@ int azaBufferDeinit(azaBuffer *data) {
 
 void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc) {
 	assert(dst.frames == src.frames);
-	assert(dst.channels == src.channels);
+	assert(dst.channels.count == src.channels.count);
+	uint32_t channels = dst.channels.count;
 	if AZA_UNLIKELY(volumeDst == 1.0f && volumeSrc == 0.0f) {
 		return;
 	} else if AZA_UNLIKELY(volumeDst == 0.0f && volumeSrc == 0.0f) {
-		for (size_t i = 0; i < dst.frames; i++) {
-			for (size_t c = 0; c < dst.channels; c++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = 0.0f;
 			}
 		}
 	} else if (volumeDst == 1.0f && volumeSrc == 1.0f) {
-		for (size_t i = 0; i < dst.frames; i++) {
-			for (size_t c = 0; c < dst.channels; c++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] + src.samples[i * src.stride + c];
 			}
 		}
 	} else if AZA_LIKELY(volumeDst == 1.0f) {
-		for (size_t i = 0; i < dst.frames; i++) {
-			for (size_t c = 0; c < dst.channels; c++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] + src.samples[i * src.stride + c] * volumeSrc;
 			}
 		}
 	} else if (volumeSrc == 1.0f) {
-		for (size_t i = 0; i < dst.frames; i++) {
-			for (size_t c = 0; c < dst.channels; c++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDst + src.samples[i * src.stride + c];
 			}
 		}
 	} else {
-		for (size_t i = 0; i < dst.frames; i++) {
-			for (size_t c = 0; c < dst.channels; c++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDst + src.samples[i * src.stride + c] * volumeSrc;
 			}
 		}
@@ -137,56 +138,57 @@ void azaBufferMixFade(azaBuffer dst, float volumeDstStart, float volumeDstEnd, a
 		return;
 	}
 	assert(dst.frames == src.frames);
-	assert(dst.channels == src.channels);
+	assert(dst.channels.count == src.channels.count);
+	uint32_t channels = dst.channels.count;
 	float volumeDstDelta = volumeDstEnd - volumeDstStart;
 	float volumeSrcDelta = volumeSrcEnd - volumeSrcStart;
 	float framesF = (float)dst.frames;
 	if (volumeDstDelta == 0.0f) {
 		if (volumeDstStart == 1.0f) {
-			for (size_t i = 0; i < dst.frames; i++) {
+			for (uint32_t i = 0; i < dst.frames; i++) {
 				float t = (float)i / framesF;
 				float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
-				for (size_t c = 0; c < dst.channels; c++) {
+				for (uint32_t c = 0; c < channels; c++) {
 					dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] + src.samples[i * src.stride + c] * volumeSrc;
 				}
 			}
 		} else {
-			for (size_t i = 0; i < dst.frames; i++) {
+			for (uint32_t i = 0; i < dst.frames; i++) {
 				float t = (float)i / framesF;
 				float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
-				for (size_t c = 0; c < dst.channels; c++) {
+				for (uint32_t c = 0; c < channels; c++) {
 					dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDstStart + src.samples[i * src.stride + c] * volumeSrc;
 				}
 			}
 		}
 	} else {
-		for (size_t i = 0; i < dst.frames; i++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
 			float t = (float)i / framesF;
 			float volumeDst = volumeDstStart + volumeDstDelta * t;
 			float volumeSrc = volumeSrcStart + volumeSrcDelta * t;
-			for (size_t c = 0; c < dst.channels; c++) {
+			for (uint32_t c = 0; c < channels; c++) {
 				dst.samples[i * dst.stride + c] = dst.samples[i * dst.stride + c] * volumeDst + src.samples[i * src.stride + c] * volumeSrc;
 			}
 		}
 	}
 }
 
-void azaBufferCopyChannel(azaBuffer dst, size_t channelDst, azaBuffer src, size_t channelSrc) {
+void azaBufferCopyChannel(azaBuffer dst, uint32_t channelDst, azaBuffer src, uint32_t channelSrc) {
 	assert(dst.frames == src.frames);
-	assert(channelDst < dst.channels);
-	assert(channelSrc < src.channels);
+	assert(channelDst < dst.channels.count);
+	assert(channelSrc < src.channels.count);
 	if (dst.stride == 1 && src.stride == 1) {
 		memcpy(dst.samples, src.samples, sizeof(float) * dst.frames);
 	} else if (dst.stride == 1) {
-		for (size_t i = 0; i < dst.frames; i++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
 			dst.samples[i] = src.samples[i * src.stride + channelSrc];
 		}
 	} else if (src.stride == 1) {
-		for (size_t i = 0; i < dst.frames; i++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
 			dst.samples[i * dst.stride + channelDst] = src.samples[i];
 		}
 	} else {
-		for (size_t i = 0; i < dst.frames; i++) {
+		for (uint32_t i = 0; i < dst.frames; i++) {
 			dst.samples[i * dst.stride + channelDst] = src.samples[i * src.stride + channelSrc];
 		}
 	}
@@ -228,7 +230,7 @@ int azaRms(azaBuffer buffer, azaRmsData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaRmsData *datum = &data[c];
 
 		for (size_t i = 0; i < buffer.frames; i++) {
@@ -269,12 +271,12 @@ int azaCubicLimiter(azaBuffer buffer) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
-	if (buffer.stride == buffer.channels) {
-		for (size_t i = 0; i < buffer.frames*buffer.channels; i++) {
+	if (buffer.stride == buffer.channels.count) {
+		for (size_t i = 0; i < buffer.frames*buffer.channels.count; i++) {
 			buffer.samples[i] = azaCubicLimiterSample(buffer.samples[i]);
 		}
 	} else {
-		for (size_t c = 0; c < buffer.channels; c++) {
+		for (size_t c = 0; c < buffer.channels.count; c++) {
 			for (size_t i = 0; i < buffer.frames; i++) {
 				size_t s = i * buffer.stride + c;
 				buffer.samples[s] = azaCubicLimiterSample(buffer.samples[s]);
@@ -303,7 +305,7 @@ int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaLookaheadLimiterData *datum = &data[c];
 		float amountOutput = aza_db_to_ampf(datum->gainOutput);
 
@@ -363,7 +365,7 @@ int azaFilter(azaBuffer buffer, azaFilterData *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaFilterData *datum = &data[c];
 		float amount = clampf(1.0f - datum->dryMix, 0.0f, 1.0f);
 		float amountDry = clampf(datum->dryMix, 0.0f, 1.0f);
@@ -422,7 +424,7 @@ int azaCompressor(azaBuffer buffer, azaCompressorData *data) {
 		if (err) return err;
 	}
 	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaCompressorData *datum = &data[c];
 		float t = (float)buffer.samplerate / 1000.0f;
 		float attackFactor = expf(-1.0f / (datum->attack * t));
@@ -515,7 +517,7 @@ int azaDelay(azaBuffer buffer, azaDelayData *data) {
 		if (err) return err;
 	}
 	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaDelayData *datum = &data[c];
 		size_t delaySamples = aza_ms_to_samples(datum->delay, (float)buffer.samplerate);
 		azaDelayDataHandleBufferResizes(datum, delaySamples);
@@ -596,7 +598,7 @@ int azaReverb(azaBuffer buffer, azaReverbData *data) {
 	azaBuffer sideBufferCombined = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	azaBuffer sideBufferEarly = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	azaBuffer sideBufferDiffuse = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaReverbData *datum = &data[c];
 		float feedback = 0.985f - (0.2f / datum->roomsize);
 		float color = datum->color * 4000.0f;
@@ -659,7 +661,7 @@ int azaSampler(azaBuffer buffer, azaSamplerData *data) {
 		if (err) return err;
 	}
 	float transition = expf(-1.0f / (AZAUDIO_SAMPLER_TRANSITION_FRAMES));
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaSamplerData *datum = &data[c];
 		float samplerateFactor = (float)buffer.samplerate / (float)datum->buffer->samplerate;
 
@@ -737,7 +739,7 @@ void azaGateDataInit(azaGateData *data) {
 
 int azaGate(azaBuffer buffer, azaGateData *data) {
 	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
-	for (size_t c = 0; c < buffer.channels; c++) {
+	for (size_t c = 0; c < buffer.channels.count; c++) {
 		azaGateData *datum = &data[c];
 		float t = (float)buffer.samplerate / 1000.0f;
 		float attackFactor = expf(-1.0f / (datum->attack * t));
@@ -855,7 +857,11 @@ void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int 
 	}
 }
 
+#define PRINT_CHANNEL_AMPS 0
+
+#if PRINT_CHANNEL_AMPS
 static int repeatCount = 0;
+#endif
 
 struct channelMetadata {
 	float amp;
@@ -879,18 +885,18 @@ int compareChannelMetadataChannel(const void *_lhs, const void *_rhs) {
 	return 1;
 };
 
-void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
-	assert(dstChannelLayout.count <= AZA_MAX_CHANNEL_POSITIONS);
+
+void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
+	assert(dstBuffer.channels.count <= AZA_MAX_CHANNEL_POSITIONS);
 	assert(dstBuffer.samplerate == srcBuffer.samplerate);
 	assert(dstBuffer.frames == srcBuffer.frames);
-	assert(srcBuffer.channels == 1);
-	uint8_t effectiveChannels = AZA_MIN(dstBuffer.channels, dstChannelLayout.count);
-	if (effectiveChannels == 1) {
+	assert(srcBuffer.channels.count == 1);
+	if (dstBuffer.channels.count == 1) {
 		// Nothing to do but put it in there I guess
 		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, srcBuffer, srcAmpStart, srcAmpEnd);
 		return;
 	}
-	if (effectiveChannels == 0) {
+	if (dstBuffer.channels.count == 0) {
 		// What are we even doing
 		return;
 	}
@@ -922,8 +928,8 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 	// Gather some metadata about the channel layout
 	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, hasAerial = 0;
 	uint8_t subChannel;
-	for (uint8_t i = 0; i < effectiveChannels; i++) {
-		switch (dstChannelLayout.positions[i]) {
+	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
+		switch (dstBuffer.channels.positions[i]) {
 			case AZA_POS_LEFT_FRONT:
 			case AZA_POS_CENTER_FRONT:
 			case AZA_POS_RIGHT_FRONT:
@@ -963,7 +969,7 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 				break;
 		}
 	}
-	uint8_t nonSubChannels = hasSub ? effectiveChannels-1 : effectiveChannels;
+	uint8_t nonSubChannels = hasSub ? dstBuffer.channels.count-1 : dstBuffer.channels.count;
 	// Angles are relative to front center, to be signed later
 	// These relate to anglePhi above
 	float angleFront = AZA_DEG_TO_RAD(75.0f), angleMidFront = AZA_DEG_TO_RAD(30.0f), angleSide = AZA_DEG_TO_RAD(90.0f), angleBack = AZA_DEG_TO_RAD(130.0f);
@@ -1001,11 +1007,11 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 	memset(channelsEnd, 0, sizeof(channelsEnd));
 	float totalMagnitudeStart = 0.0f;
 	float totalMagnitudeEnd = 0.0f;
-	for (uint8_t i = 0; i < effectiveChannels; i++) {
+	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
 		azaVec3 channelVector;
 		channelsStart[i].channel = i;
 		channelsEnd[i].channel = i;
-		switch (dstChannelLayout.positions[i]) {
+		switch (dstBuffer.channels.positions[i]) {
 			case AZA_POS_LEFT_FRONT:
 				channelVector = (azaVec3) { sinf(-angleFront), 0.0f, cosf(-angleFront) };
 				break;
@@ -1077,15 +1083,15 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 	float ampMinRangeStart = 0.0f;
 	float ampMinRangeEnd = 0.0f;
 
-	if (effectiveChannels > 2) {
+	if (dstBuffer.channels.count > 2) {
 		int minChannel = 2;
-		if (effectiveChannels > 3 && hasAerial) {
+		if (dstBuffer.channels.count > 3 && hasAerial) {
 			// TODO: This probably isn't a reliable way to use aerials. Probably do something smarter.
 			minChannel = 3;
 		}
 		// Get channel amps in descending order
-		qsort(channelsStart, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataAmp);
-		qsort(channelsEnd, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataAmp);
+		qsort(channelsStart, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataAmp);
+		qsort(channelsEnd, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataAmp);
 
 		float ampMaxRangeStart = channelsStart[0].amp;
 		float ampMaxRangeEnd = channelsEnd[0].amp;
@@ -1093,7 +1099,7 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 		float ampMinRangeEnd = channelsEnd[minChannel].amp;
 		totalMagnitudeStart = 0.0f;
 		totalMagnitudeEnd = 0.0f;
-		for (uint8_t i = 0; i < effectiveChannels; i++) {
+		for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
 			channelsStart[i].amp = linstepf(channelsStart[i].amp, ampMinRangeStart, ampMaxRangeStart) + allChannelAddAmpStart / (float)nonSubChannels;
 			channelsEnd[i].amp = linstepf(channelsEnd[i].amp, ampMinRangeEnd, ampMaxRangeEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
 			totalMagnitudeStart += channelsStart[i].amp;
@@ -1101,20 +1107,33 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout,
 		}
 
 		// Put the amps back into channel order
-		qsort(channelsStart, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataChannel);
-		qsort(channelsEnd, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataChannel);
+		qsort(channelsStart, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataChannel);
+		qsort(channelsEnd, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataChannel);
 	}
 
 	azaBuffer dst = dstBuffer;
-	dst.channels = 1;
-	for (uint8_t i = 0; i < effectiveChannels; i++) {
+	dst.channels.count = 1;
+#if PRINT_CHANNEL_AMPS
+	if (repeatCount == 0) {
+		AZA_LOG_INFO("\n");
+	}
+#endif
+	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
 		dst.samples = dstBuffer.samples + i;
 		float ampStart = srcAmpStart;
 		float ampEnd = srcAmpEnd;
-		if (dstChannelLayout.positions[i] != AZA_POS_SUBWOOFER) {
+		if (dstBuffer.channels.positions[i] != AZA_POS_SUBWOOFER) {
 			ampStart *= channelsStart[i].amp / totalMagnitudeStart;
 			ampEnd *= channelsEnd[i].amp / totalMagnitudeEnd;
 		}
+#if PRINT_CHANNEL_AMPS
+		if (repeatCount == 0) {
+			AZA_LOG_INFO("Channel %u amp: %f\n", (uint32_t)i, ampStart);
+		}
+#endif
 		azaBufferMixFade(dst, 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
 	}
+#if PRINT_CHANNEL_AMPS
+	repeatCount = (repeatCount + 1) % 50;
+#endif
 }

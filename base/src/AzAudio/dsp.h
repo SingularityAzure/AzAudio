@@ -71,21 +71,152 @@ typedef struct azaChannelLayout {
 	uint8_t positions[AZA_MAX_CHANNEL_POSITIONS];
 } azaChannelLayout;
 
+// Some standard layouts, for your convenience
+
+static inline azaChannelLayout azaChannelLayoutMono() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 1,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ {AZA_POS_CENTER_FRONT},
+	};
+}
+
+static inline azaChannelLayout azaChannelLayoutStereo() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 2,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayoutHeadphones() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 2,
+		/* .formFactor = */ AZA_FORM_FACTOR_HEADPHONES,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_2_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 3,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_SUBWOOFER },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_3_0() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 3,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_3_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 4,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_SUBWOOFER },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_4_0() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 4,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_4_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 5,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_SUBWOOFER, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_5_0() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 5,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_5_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 6,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_SUBWOOFER, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_7_0() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 7,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK, AZA_POS_LEFT_SIDE, AZA_POS_RIGHT_SIDE },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_7_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 8,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_SUBWOOFER, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK, AZA_POS_LEFT_SIDE, AZA_POS_RIGHT_SIDE },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_9_0() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 9,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK, AZA_POS_LEFT_CENTER_FRONT, AZA_POS_RIGHT_CENTER_FRONT, AZA_POS_LEFT_SIDE, AZA_POS_RIGHT_SIDE },
+	};
+}
+
+static inline azaChannelLayout azaChannelLayout_9_1() {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 10,
+		/* .formFactor = */ AZA_FORM_FACTOR_SPEAKERS,
+		/* .positions  = */ { AZA_POS_LEFT_FRONT, AZA_POS_RIGHT_FRONT, AZA_POS_CENTER_FRONT, AZA_POS_SUBWOOFER, AZA_POS_LEFT_BACK, AZA_POS_RIGHT_BACK, AZA_POS_LEFT_CENTER_FRONT, AZA_POS_RIGHT_CENTER_FRONT, AZA_POS_LEFT_SIDE, AZA_POS_RIGHT_SIDE },
+	};
+}
+
+// Make a reasonable guess about the layout for 1 to 10 channels. For more advanced layouts, such as with aerial speakers, you'll have to specify them manually, since there's no way to guess the setup in a meaningful way for aerials.
+// To use the device layout on a Stream, just leave channels zeroed out.
+static inline azaChannelLayout azaChannelLayoutStandardFromCount(uint8_t count) {
+	switch (count) {
+		case  1: return azaChannelLayoutMono();
+		case  2: return azaChannelLayoutStereo();
+		case  3: return azaChannelLayout_2_1();
+		case  4: return azaChannelLayout_4_0();
+		case  5: return azaChannelLayout_5_0();
+		case  6: return azaChannelLayout_5_1();
+		case  7: return azaChannelLayout_7_0();
+		case  8: return azaChannelLayout_7_1();
+		case  9: return azaChannelLayout_9_0();
+		case 10: return azaChannelLayout_9_1();
+		default: return AZA_CLITERAL(azaChannelLayout) { 0 };
+	}
+}
+
 
 // Buffer used by DSP functions for their input/output
 typedef struct azaBuffer {
 	// actual read/write-able data
 	// one frame is a single sample from each channel, one after the other
 	float *samples;
+	// samples per second, used by DSP functions that rely on timing
+	uint32_t samplerate;
 	// how many samples there are in a single channel
 	uint32_t frames;
 	// distance between samples from one channel in number of floats
-	uint32_t stride;
-	// how many channels are stored in this buffer for user-created buffers
-	// or how many channels should be accessed by DSP functions
-	uint32_t channels;
-	// samples per second, used by DSP functions that rely on timing
-	uint32_t samplerate;
+	uint16_t stride;
+	// how many channels are stored in this buffer for user-created buffers, or how many channels should be accessed by DSP functions, and an optional layout for said channels. Some functions expect the layout to be fully-specified, others don't care.
+	azaChannelLayout channels;
 } azaBuffer;
 // You must first set frames and channels before calling this to allocate samples.
 // If samples are externally-managed, you don't have to do this.
@@ -93,18 +224,22 @@ int azaBufferInit(azaBuffer *data);
 int azaBufferDeinit(azaBuffer *data);
 
 // Mixes src into the existing contents of dst
+// NOTE: This will not respect channel positions. The buffers will be mixed as though the channel layouts are the same.
 void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc);
+
+// Same as azaBufferMix, but the volumes will fade linearly across the buffer
+void azaBufferMixFade(azaBuffer dst, float volumeDstStart, float volumeDstEnd, azaBuffer src, float volumeSrcStart, float volumeSrcEnd);
 
 // Copies the contents of one channel of src into dst
 void azaBufferCopyChannel(azaBuffer dst, uint32_t channelDst, azaBuffer src, uint32_t channelSrc);
 
 static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 	return AZA_CLITERAL(azaBuffer) {
-		/* .samples = */ sample,
-		/* .frames = */ 1,
-		/* .stride = */ 1,
-		/* .channels = */ 1,
+		/* .samples    = */ sample,
 		/* .samplerate = */ samplerate,
+		/* .frames     = */ 1,
+		/* .stride     = */ 1,
+		/* .channels   = */ azaChannelLayoutMono(),
 	};
 }
 
@@ -351,10 +486,13 @@ typedef struct azaWorld {
 } azaWorld;
 extern azaWorld azaWorldDefault;
 
-// Does simple angle-based spatialization of the source to map it to the channel layout.
+// Does simple volume-based spatialization of the source to map it to the channel layout.
+// Adds its sound to the existing signal in dstBuffer.
+// dstBuffer and srcBuffer must have the same number of frames and the same samplerate.
+// srcBuffer MUST be 1-channel
 // world can be NULL, indicating to use azaWorldDefault.
-// Adds its sound to the existing signal in dstBuffer
-void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
+// Doesn't attenuate the volume by distance. You must do that yourself and pass the result into srcAmp.
+void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
 
 
 
