@@ -9,6 +9,7 @@
 #include "../../helpers.h"
 
 #include "threads.h"
+#include "platform_util.h"
 
 #include <Mmdeviceapi.h>
 #include <mmreg.h>
@@ -30,7 +31,7 @@
 #define GUID_ARGS(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
 
 #define CHECK_RESULT(description, onFail) if (FAILED(hResult)) {\
-	AZA_LOG_ERR(description " failed:%ld\n", hResult);\
+	AZA_LOG_ERR(description " failed:%s\n", HRESULT_String(hResult));\
 	onFail;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
@@ -786,7 +787,6 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 	desiredFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 	hResult = data->pAudioClient->lpVtbl->IsFormatSupported(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, (WAVEFORMATEX*)&desiredFormat, (WAVEFORMATEX**)&pClosestFormat);
 	// TODO: Probably handle the return values of IsFormatSupported (namely AUDCLNT_E_DEVICE_INVALIDATED and AUDCLNT_E_SERVICE_NOT_RUNNING)
-	CHECK_RESULT("IAudioClient::IsFormatSupported", FAIL_ACTION);
 	int exactFormat = 0;
 	if (hResult == S_FALSE) {
 		// We got a closest match which is not an exact match
@@ -811,10 +811,12 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 		data->waveFormatExtensible.dwChannelMask = defaultFormat->dwChannelMask;
 		AZA_LOG_INFO("Device \"%s\" supports the exact format desired :)\n", deviceInfo->name);
 		exactFormat = 1;
-	} else {
+	} else if (hResult == AUDCLNT_E_UNSUPPORTED_FORMAT) {
 		// Fallback to default
 		data->waveFormatExtensible = *defaultFormat;
 		AZA_LOG_INFO("Device \"%s\" can't compromise, falling back to default format\n", deviceInfo->name);
+	} else {
+		CHECK_RESULT("IAudioClient::IsFormatSupported", FAIL_ACTION);
 	}
 
 	hResult = data->pAudioClient->lpVtbl->Initialize(data->pAudioClient, AUDCLNT_SHAREMODE_SHARED, 0, 10000 * 25, 0, (WAVEFORMATEX*)&data->waveFormatExtensible, NULL);

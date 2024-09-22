@@ -855,15 +855,43 @@ void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int 
 	}
 }
 
-void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
+static int repeatCount = 0;
+
+struct channelMetadata {
+	float amp;
+	uint32_t channel;
+};
+
+int compareChannelMetadataAmp(const void *_lhs, const void *_rhs) {
+	const struct channelMetadata *lhs = _lhs;
+	const struct channelMetadata *rhs = _rhs;
+	if (lhs->amp == rhs->amp) return 0;
+	// We want descending order
+	if (lhs->amp < rhs->amp) return 1;
+	return -1;
+};
+int compareChannelMetadataChannel(const void *_lhs, const void *_rhs) {
+	const struct channelMetadata *lhs = _lhs;
+	const struct channelMetadata *rhs = _rhs;
+	if (lhs->channel == rhs->channel) return 0;
+	// We want ascending order
+	if (lhs->channel < rhs->channel) return -1;
+	return 1;
+};
+
+void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
 	assert(dstChannelLayout.count <= AZA_MAX_CHANNEL_POSITIONS);
-	assert(dstBuffer.channels == dstChannelLayout.count);
 	assert(dstBuffer.samplerate == srcBuffer.samplerate);
 	assert(dstBuffer.frames == srcBuffer.frames);
 	assert(srcBuffer.channels == 1);
-	if (dstBuffer.channels == 1) {
+	uint8_t effectiveChannels = AZA_MIN(dstBuffer.channels, dstChannelLayout.count);
+	if (effectiveChannels == 1) {
 		// Nothing to do but put it in there I guess
 		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, srcBuffer, srcAmpStart, srcAmpEnd);
+		return;
+	}
+	if (effectiveChannels == 0) {
+		// What are we even doing
 		return;
 	}
 	if (world == NULL) {
@@ -875,25 +903,26 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 	// How much of the signal to add to all channels in case srcPos is crossing close to the head
 	float allChannelAddAmpStart = 0.0f;
 	float allChannelAddAmpEnd = 0.0f;
+	float normStart, normEnd;
 	{
-		float norm = azaVec3Norm(srcPosStart);
-		if (norm < 0.5f) {
-			allChannelAddAmpStart = (0.5f - norm) * 2.0f;
+		normStart = azaVec3Norm(srcPosStart);
+		if (normStart < 0.5f) {
+			allChannelAddAmpStart = (0.5f - normStart) * 2.0f;
 		} else {
-			srcPosStart = azaDivVec3Scalar(srcPosStart, norm);
+			srcPosStart = azaDivVec3Scalar(srcPosStart, normStart);
 		}
-		norm = azaVec3Norm(srcPosEnd);
-		if (norm < 0.5f) {
-			allChannelAddAmpEnd = (0.5f - norm) * 2.0f;
+		normEnd = azaVec3Norm(srcPosEnd);
+		if (normEnd < 0.5f) {
+			allChannelAddAmpEnd = (0.5f - normEnd) * 2.0f;
 		} else {
-			srcPosEnd = azaDivVec3Scalar(srcPosEnd, norm);
+			srcPosEnd = azaDivVec3Scalar(srcPosEnd, normEnd);
 		}
 	}
 
 	// Gather some metadata about the channel layout
 	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, hasAerial = 0;
 	uint8_t subChannel;
-	for (uint8_t i = 0; i < dstChannelLayout.count; i++) {
+	for (uint8_t i = 0; i < effectiveChannels; i++) {
 		switch (dstChannelLayout.positions[i]) {
 			case AZA_POS_LEFT_FRONT:
 			case AZA_POS_CENTER_FRONT:
@@ -934,7 +963,7 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 				break;
 		}
 	}
-	uint8_t nonSubChannels = hasSub ? dstChannelLayout.count-1 : dstChannelLayout.count;
+	uint8_t nonSubChannels = hasSub ? effectiveChannels-1 : effectiveChannels;
 	// Angles are relative to front center, to be signed later
 	// These relate to anglePhi above
 	float angleFront = AZA_DEG_TO_RAD(75.0f), angleMidFront = AZA_DEG_TO_RAD(30.0f), angleSide = AZA_DEG_TO_RAD(90.0f), angleBack = AZA_DEG_TO_RAD(130.0f);
@@ -966,16 +995,16 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 	}
 
 	// Position our channel vectors
-	float channelAmpsStart[AZA_MAX_CHANNEL_POSITIONS];
-	float channelAmpsEnd[AZA_MAX_CHANNEL_POSITIONS];
-	memset(channelAmpsStart, 0, sizeof(channelAmpsStart));
-	memset(channelAmpsEnd, 0, sizeof(channelAmpsEnd));
-	float totalMagnitudeStart = 0.1f;
-	float totalMagnitudeEnd = 0.1f;
-	float maxAmpStart = 0.0f;
-	float maxAmpEnd = 0.0f;
-	for (uint8_t i = 0; i < dstChannelLayout.count; i++) {
+	struct channelMetadata channelsStart[AZA_MAX_CHANNEL_POSITIONS];
+	struct channelMetadata channelsEnd[AZA_MAX_CHANNEL_POSITIONS];
+	memset(channelsStart, 0, sizeof(channelsStart));
+	memset(channelsEnd, 0, sizeof(channelsEnd));
+	float totalMagnitudeStart = 0.0f;
+	float totalMagnitudeEnd = 0.0f;
+	for (uint8_t i = 0; i < effectiveChannels; i++) {
 		azaVec3 channelVector;
+		channelsStart[i].channel = i;
+		channelsEnd[i].channel = i;
 		switch (dstChannelLayout.positions[i]) {
 			case AZA_POS_LEFT_FRONT:
 				channelVector = (azaVec3) { sinf(-angleFront), 0.0f, cosf(-angleFront) };
@@ -1029,29 +1058,62 @@ void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout
 				channelVector = azaVec3Normalized((azaVec3) { sinf(angleBack), 1.0f, cosf(angleBack) });
 				break;
 			default: // This includes AZA_POS_SUBWOOFER
-				channelAmpsStart[i] = 1.0f;
-				channelAmpsEnd[i] = 1.0f;
 				continue;
 		}
-		channelAmpsStart[i] = 0.5f + 0.5f * azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
-		channelAmpsEnd[i] = 0.5f + 0.5f * azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
-		// if (channelAmpsStart[i] < 0.0f) channelAmpsStart[i] *= -0.1f;
-		// if (channelAmpsEnd[i] < 0.0f) channelAmpsEnd[i] *= -0.1f;
-		channelAmpsStart[i] = 0.1f + 0.9f * channelAmpsStart[i];
-		channelAmpsEnd[i] = 0.1f + 0.9f * channelAmpsEnd[i];
-		totalMagnitudeStart += azaSqr(channelAmpsStart[i]);
-		totalMagnitudeEnd += azaSqr(channelAmpsEnd[i]);
+		channelsStart[i].amp = 0.5f * normStart + 0.5f * azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		channelsEnd[i].amp = 0.5f * normEnd + 0.5f * azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+		// channelsStart[i].amp = azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		// channelsEnd[i].amp = azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+		// if (channelsStart[i].amp < 0.0f) channelsStart[i].amp = 0.0f;
+		// if (channelsEnd[i].amp < 0.0f) channelsEnd[i].amp = 0.0f;
+		// channelsStart[i].amp = 0.25f + 0.75f * channelsStart[i].amp;
+		// channelsEnd[i].amp = 0.25f + 0.75f * channelsEnd[i].amp;
+		totalMagnitudeStart += channelsStart[i].amp;
+		totalMagnitudeEnd += channelsEnd[i].amp;
+	}
+
+	float ampMaxRangeStart = 1.0f;
+	float ampMaxRangeEnd = 1.0f;
+	float ampMinRangeStart = 0.0f;
+	float ampMinRangeEnd = 0.0f;
+
+	if (effectiveChannels > 2) {
+		int minChannel = 2;
+		if (effectiveChannels > 3 && hasAerial) {
+			// TODO: This probably isn't a reliable way to use aerials. Probably do something smarter.
+			minChannel = 3;
+		}
+		// Get channel amps in descending order
+		qsort(channelsStart, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataAmp);
+		qsort(channelsEnd, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataAmp);
+
+		float ampMaxRangeStart = channelsStart[0].amp;
+		float ampMaxRangeEnd = channelsEnd[0].amp;
+		float ampMinRangeStart = channelsStart[minChannel].amp;
+		float ampMinRangeEnd = channelsEnd[minChannel].amp;
+		totalMagnitudeStart = 0.0f;
+		totalMagnitudeEnd = 0.0f;
+		for (uint8_t i = 0; i < effectiveChannels; i++) {
+			channelsStart[i].amp = linstepf(channelsStart[i].amp, ampMinRangeStart, ampMaxRangeStart) + allChannelAddAmpStart / (float)nonSubChannels;
+			channelsEnd[i].amp = linstepf(channelsEnd[i].amp, ampMinRangeEnd, ampMaxRangeEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+			totalMagnitudeStart += channelsStart[i].amp;
+			totalMagnitudeEnd += channelsEnd[i].amp;
+		}
+
+		// Put the amps back into channel order
+		qsort(channelsStart, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataChannel);
+		qsort(channelsEnd, effectiveChannels, sizeof(struct channelMetadata), compareChannelMetadataChannel);
 	}
 
 	azaBuffer dst = dstBuffer;
 	dst.channels = 1;
-	for (uint8_t i = 0; i < dstChannelLayout.count; i++) {
+	for (uint8_t i = 0; i < effectiveChannels; i++) {
 		dst.samples = dstBuffer.samples + i;
-		float ampStart = srcAmpStart * channelAmpsStart[i];
-		float ampEnd = srcAmpEnd * channelAmpsEnd[i];
+		float ampStart = srcAmpStart;
+		float ampEnd = srcAmpEnd;
 		if (dstChannelLayout.positions[i] != AZA_POS_SUBWOOFER) {
-			ampStart /= sqrtf(totalMagnitudeStart);
-			ampEnd /= sqrtf(totalMagnitudeEnd);
+			ampStart *= channelsStart[i].amp / totalMagnitudeStart;
+			ampEnd *= channelsEnd[i].amp / totalMagnitudeEnd;
 		}
 		azaBufferMixFade(dst, 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
 	}

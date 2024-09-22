@@ -121,8 +121,9 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	srcBuffer.stride = 1;
 	azaVec3 srcPosStart = {
 		sin(angle),
-		0.0f,
 		cos(angle),
+		0.0f,
+		// 0.0f,
 	};
 	angle += (float)buffer.frames / (float)buffer.samplerate;
 	if (angle > AZA_TAU) {
@@ -130,11 +131,12 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	}
 	azaVec3 srcPosEnd = {
 		sin(angle),
-		0.0f,
 		cos(angle),
+		0.0f,
+		// 0.0f,
 	};
 	memset(buffer.samples, 0, buffer.frames * buffer.channels * sizeof(float));
-	azaMixChannelsSimple(buffer, outputChannelLayout, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
+	azaSpatializeSimple(buffer, outputChannelLayout, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
 	// if ((err = azaFilter(buffer, delayWetFilterData))) {
 	// 	return err;
 	// }
@@ -188,6 +190,10 @@ int main(int argumentCount, char** argumentValues) {
 		if (err) {
 			throw a_fit("Failed to azaInit!");
 		}
+		// Change world to z-up
+		azaWorldDefault.orientation.right = azaVec3 { 1.0f, 0.0f, 0.0f };
+		azaWorldDefault.orientation.up = azaVec3 { 0.0f, 0.0f, 1.0f };
+		azaWorldDefault.orientation.forward = azaVec3 { 0.0f, 1.0f, 0.0f };
 		{ // Query devices
 			size_t numOutputDevices = azaGetDeviceCount(AZA_OUTPUT);
 			sys::cout << "Output Devices: " << numOutputDevices << std::endl;

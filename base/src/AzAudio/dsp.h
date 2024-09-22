@@ -57,11 +57,17 @@ enum azaPosition {
 	AZA_POS_RIGHT_BACK_TOP     =17,
 };
 // NOTE: This is more than we should ever see in reality, and definitely more than can be uniquely represented by the above positions. We're reserving more for later.
-#define AZA_MAX_CHANNEL_POSITIONS 23
+#define AZA_MAX_CHANNEL_POSITIONS 22
 #define AZA_POS_ENUM_COUNT (AZA_POS_RIGHT_BACK_TOP+1)
+
+enum azaFormFactor {
+	AZA_FORM_FACTOR_SPEAKERS=0,
+	AZA_FORM_FACTOR_HEADPHONES,
+};
 
 typedef struct azaChannelLayout {
 	uint8_t count;
+	uint8_t formFactor;
 	uint8_t positions[AZA_MAX_CHANNEL_POSITIONS];
 } azaChannelLayout;
 
@@ -348,7 +354,7 @@ extern azaWorld azaWorldDefault;
 // Does simple angle-based spatialization of the source to map it to the channel layout.
 // world can be NULL, indicating to use azaWorldDefault.
 // Adds its sound to the existing signal in dstBuffer
-void azaMixChannelsSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
+void azaSpatializeSimple(azaBuffer dstBuffer, azaChannelLayout dstChannelLayout, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
 
 
 
