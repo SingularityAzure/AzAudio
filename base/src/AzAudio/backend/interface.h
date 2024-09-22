@@ -48,6 +48,12 @@ extern fp_azaStreamInit azaStreamInit;
 typedef void (*fp_azaStreamDeinit)(azaStream *stream);
 extern fp_azaStreamDeinit azaStreamDeinit;
 
+typedef void (*fp_azaStreamSetActive)(azaStream *stream, uint8_t active);
+extern fp_azaStreamSetActive azaStreamSetActive;
+
+typedef uint8_t (*fp_azaStreamGetActive)(azaStream *stream);
+extern fp_azaStreamGetActive azaStreamGetActive;
+
 typedef const char* (*fp_azaStreamGetDeviceName)(azaStream *stream);
 extern fp_azaStreamGetDeviceName azaStreamGetDeviceName;
 

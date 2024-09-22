@@ -207,6 +207,25 @@ int main(int argumentCount, char** argumentValues) {
 				sys::cout << "\t" << azaGetDeviceName(AZA_INPUT, i) << " with " << channels << " channels." << std::endl;
 			}
 		}
+		azaStream streamInput = {0};
+		streamInput.mixCallback = mixCallbackInput;
+		streamInput.deviceInterface = AZA_INPUT;
+		streamInput.channels = azaChannelLayoutMono();
+		// streamInput.samplerate = 44100/4;
+		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
+			throw a_fit("Failed to init input stream!");
+		}
+		// This ensures that if anything changes in the backend, our input stream will always have the same channels and samplerate.
+		// TODO: Make this a flag somewhere, perhaps in azaStreamInit
+		streamInput.channels = azaStreamGetChannelLayout(&streamInput);
+		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
+		azaStream streamOutput = {0};
+		streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
+		streamOutput.samplerate = streamInput.samplerate;
+		streamOutput.mixCallback = mixCallbackOutput;
+		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
+			throw a_fit("Failed to init output stream!");
+		}
 		for (int c = 0; c < NUM_CHANNELS; c++) {
 			gateData[c].threshold = -42.0f;
 			gateData[c].attack = 10.0f;
@@ -263,25 +282,8 @@ int main(int argumentCount, char** argumentValues) {
 			limiterData[c].gainOutput = -6.0f;
 			azaLookaheadLimiterDataInit(&limiterData[c]);
 		}
-		azaStream streamInput = {0};
-		streamInput.mixCallback = mixCallbackInput;
-		streamInput.deviceInterface = AZA_INPUT;
-		streamInput.channels = azaChannelLayoutMono();
-		// streamInput.samplerate = 44100/4;
-		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
-			throw a_fit("Failed to init input stream!");
-		}
-		// This ensures that if anything changes in the backend, our input stream will always have the same channels and samplerate.
-		// TODO: Make this a flag somewhere, perhaps in azaStreamInit
-		streamInput.channels = azaStreamGetChannelLayout(&streamInput);
-		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
-		azaStream streamOutput = {0};
-		streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
-		streamOutput.samplerate = streamInput.samplerate;
-		streamOutput.mixCallback = mixCallbackOutput;
-		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
-			throw a_fit("Failed to init output stream!");
-		}
+		azaStreamSetActive(&streamInput, 1);
+		azaStreamSetActive(&streamOutput, 1);
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
 		azaStreamDeinit(&streamInput);

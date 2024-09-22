@@ -107,7 +107,8 @@ static size_t defaultInputDevice = AZA_MAX_DEVICES;
 // TODO: Implement IMMNotificationClient to handle changes to audio devices
 
 typedef struct azaStreamData {
-	int isActive;
+	uint8_t isInUse;
+	uint8_t isActive;
 	azaStream *stream;
 	azaDeviceInfo *deviceInfo;
 	uint32_t deviceBufferFrames;
@@ -140,18 +141,19 @@ static size_t streamCount;
 static azaStreamData* azaStreamDataGet() {
 	azaStreamData *data = NULL;
 	for (int i = 0; i < AZA_MAX_STREAMS; i++) {
-		if (!streams[i].isActive) {
+		if (!streams[i].isInUse) {
 			data = &streams[i];
 		}
 	}
 	streamCount++;
 	memset(data, 0, sizeof(*data));
+	data->isInUse = 1;
 	return data;
 }
 
 static void azaStreamDataFree(azaStreamData *data) {
-	if (data->isActive) {
-		data->isActive = 0;
+	if (data->isInUse) {
+		data->isInUse = 0;
 		streamCount--;
 		azaBufferDeinit(&data->nativeBuffer);
 		azaBufferDeinit(&data->processingBuffer);
@@ -895,7 +897,6 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 	}
 	data->stream = stream;
 	stream->data = data;
-	data->isActive = 1;
 
 	CoTaskMemFree(defaultFormat);
 	CoTaskMemFree(pClosestFormat);
@@ -921,6 +922,18 @@ static void azaStreamDeinitWASAPI(azaStream *stream) {
 	SAFE_RELEASE(data->pRenderClient);
 	azaStreamDataFree(data);
 	azaMutexUnlock(&mutex);
+}
+
+static void azaStreamSetActiveWASAPI(azaStream *stream, uint8_t active) {
+	azaMutexLock(&mutex);
+	azaStreamData *data = stream->data;
+	data->isActive = active;
+	azaMutexUnlock(&mutex);
+}
+
+static void azaStreamGetActiveWASAPI(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->isActive;
 }
 
 static size_t azaGetDeviceCountWASAPI(azaDeviceInterface interface) {
@@ -962,6 +975,8 @@ static size_t azaGetDeviceChannelsWASAPI(azaDeviceInterface interface, size_t in
 int azaBackendWASAPIInit() {
 	azaStreamInit = azaStreamInitWASAPI;
 	azaStreamDeinit = azaStreamDeinitWASAPI;
+	azaStreamSetActive = azaStreamSetActiveWASAPI;
+	azaStreamGetActive = azaStreamGetActiveWASAPI;
 	azaStreamGetDeviceName = azaStreamGetDeviceNameWASAPI;
 	azaStreamGetSamplerate = azaStreamGetSamplerateWASAPI;
 	azaStreamGetChannelLayout = azaStreamGetChannelLayoutWASAPI;
