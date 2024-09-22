@@ -3,7 +3,7 @@
 #include <Audioclient.h>
 
 #include <stdio.h>
-#if 1
+#if 1 // NOTE: The other path adds 200kb to the executable...
 const char* HRESULT_String(HRESULT hResult) {
 	static char buffer[256];
 	switch (hResult) {
@@ -52,7 +52,7 @@ const char* HRESULT_String(HRESULT hResult) {
 	DWORD messageId = HRESULT_CODE(hResult);
 	DWORD languageId = LANG_USER_DEFAULT;
 	if (0 == FormatMessage(0, NULL, messageId, languageId, buffer, sizeof(buffer), NULL)) {
-		snprintf(buffer, 16, "0x%lx", hResult);
+		snprintf(buffer, 256, "0x%lx", hResult);
 	}
 	return buffer;
 }
