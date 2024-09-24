@@ -411,6 +411,8 @@ typedef struct azaDelayConfig {
 	float delay;
 	// 0 to 1 multiple of output feeding back into input
 	float feedback;
+	// How much of one channel's signal gets added to a different channel in the range 0 to 1
+	float pingpong;
 	// You can provide a chain of effects to operate on the wet output
 	azaDSP *wetEffects;
 } azaDelayConfig;
@@ -452,10 +454,11 @@ typedef struct azaReverbConfig {
 	float delay;
 } azaReverbConfig;
 
-#define AZAUDIO_REVERB_DELAY_COUNT 15
+#define AZAUDIO_REVERB_DELAY_COUNT 30
 typedef struct azaReverb {
 	azaDSP header;
 	azaReverbConfig config;
+	azaDelay *inputDelay;
 	azaDelay *delays[AZAUDIO_REVERB_DELAY_COUNT];
 	azaFilter *filters[AZAUDIO_REVERB_DELAY_COUNT];
 } azaReverb;

@@ -736,12 +736,16 @@ int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
 	}
 	azaDelayHandleBufferResizes(data, buffer.samplerate, buffer.channels.count);
 	azaBuffer sideBuffer = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
+	memset(sideBuffer.samples, 0, sizeof(float) * sideBuffer.frames * sideBuffer.channels.count);
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
 		azaDelayChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		uint32_t index = channelData->index;
 		for (uint32_t i = 0; i < buffer.frames; i++) {
 			uint32_t s = i * buffer.stride + c;
-			sideBuffer.samples[i * sideBuffer.stride + c] = buffer.samples[s] + channelData->buffer[index] * data->config.feedback;
+			uint8_t c2 = (c + 1) % buffer.channels.count;
+			float toAdd = buffer.samples[s] + channelData->buffer[index] * data->config.feedback;
+			sideBuffer.samples[i * sideBuffer.stride + c] += toAdd * (1.0f - data->config.pingpong);
+			sideBuffer.samples[i * sideBuffer.stride + c2] += toAdd * data->config.pingpong;
 			index = (index+1) % channelData->delaySamples;
 		}
 	}
@@ -778,30 +782,55 @@ azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline) {
 	result->header.structSize = size;
 	result->config = config;
 
+	result->inputDelay = azaMakeDelay((azaDelayConfig){
+		.gain = 0.0f,
+		.gainDry = -INFINITY,
+		.delay = config.delay,
+		.feedback = 0.0f,
+		.wetEffects = NULL,
+		.pingpong = 0.0f,
+	}, channelCapInline);
+
 	float delays[AZAUDIO_REVERB_DELAY_COUNT] = {
-		AZA_SAMPLES_TO_MS(1557, 48000),
-		AZA_SAMPLES_TO_MS(1617, 48000),
-		AZA_SAMPLES_TO_MS(1491, 48000),
-		AZA_SAMPLES_TO_MS(1422, 48000),
-		AZA_SAMPLES_TO_MS(1277, 48000),
-		AZA_SAMPLES_TO_MS(1356, 48000),
-		AZA_SAMPLES_TO_MS(1188, 48000),
-		AZA_SAMPLES_TO_MS(1116, 48000),
 		AZA_SAMPLES_TO_MS(2111, 48000),
-		AZA_SAMPLES_TO_MS(2133, 48000),
-		AZA_SAMPLES_TO_MS( 673, 48000),
-		AZA_SAMPLES_TO_MS( 556, 48000),
-		AZA_SAMPLES_TO_MS( 441, 48000),
-		AZA_SAMPLES_TO_MS( 341, 48000),
-		AZA_SAMPLES_TO_MS( 713, 48000),
+		AZA_SAMPLES_TO_MS(2129, 48000),
+		AZA_SAMPLES_TO_MS(2017, 48000),
+		AZA_SAMPLES_TO_MS(2029, 48000),
+		AZA_SAMPLES_TO_MS(1753, 48000),
+		AZA_SAMPLES_TO_MS(1733, 48000),
+		AZA_SAMPLES_TO_MS(1699, 48000),
+		AZA_SAMPLES_TO_MS(1621, 48000),
+		AZA_SAMPLES_TO_MS(1447, 48000),
+		AZA_SAMPLES_TO_MS(1429, 48000),
+		AZA_SAMPLES_TO_MS(1361, 48000),
+		AZA_SAMPLES_TO_MS(1319, 48000),
+		AZA_SAMPLES_TO_MS(1201, 48000),
+		AZA_SAMPLES_TO_MS(1171, 48000),
+		AZA_SAMPLES_TO_MS(1129, 48000),
+		AZA_SAMPLES_TO_MS(1117, 48000),
+		AZA_SAMPLES_TO_MS(1063, 48000),
+		AZA_SAMPLES_TO_MS(1051, 48000),
+		AZA_SAMPLES_TO_MS(1039, 48000),
+		AZA_SAMPLES_TO_MS(1009, 48000),
+		AZA_SAMPLES_TO_MS( 977, 48000),
+		AZA_SAMPLES_TO_MS( 919, 48000),
+		AZA_SAMPLES_TO_MS( 857, 48000),
+		AZA_SAMPLES_TO_MS( 773, 48000),
+		AZA_SAMPLES_TO_MS( 743, 48000),
+		AZA_SAMPLES_TO_MS( 719, 48000),
+		AZA_SAMPLES_TO_MS( 643, 48000),
+		AZA_SAMPLES_TO_MS( 641, 48000),
+		AZA_SAMPLES_TO_MS( 631, 48000),
+		AZA_SAMPLES_TO_MS( 619, 48000),
 	};
 	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
 		result->delays[i] = azaMakeDelay((azaDelayConfig) {
 			.gain = 0.0f,
-			.gainDry = 0.0f,
-			.delay = delays[i] + config.delay,
+			.gainDry = -INFINITY,
+			.delay = delays[i],
 			.feedback = 0.0f,
 			.wetEffects = NULL,
+			.pingpong = 0.05f,
 		}, channelCapInline);
 		result->filters[i] = azaMakeFilter((azaFilterConfig) {
 			.kind = AZA_FILTER_LOW_PASS,
@@ -827,6 +856,8 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
 	}
+	azaBuffer inputBuffer = azaPushSideBufferCopy(buffer);
+	azaProcessDelay(inputBuffer, data->inputDelay);
 	azaBuffer sideBufferCombined = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
 	azaBuffer sideBufferEarly = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
 	azaBuffer sideBufferDiffuse = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
@@ -836,15 +867,16 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 	float amountDry = aza_db_to_ampf(data->config.gainDry);
 	memset(sideBufferCombined.samples, 0, sizeof(float) * buffer.frames * buffer.channels.count);
 	for (int tap = 0; tap < AZAUDIO_REVERB_DELAY_COUNT*2/3; tap++) {
+		// TODO: Make feedback depend on delay time such that they all decay in amplitude at the same rate over time
 		data->delays[tap]->config.feedback = feedback;
 		data->filters[tap]->config.frequency = color;
-		memcpy(sideBufferEarly.samples, buffer.samples, sizeof(float) * buffer.frames * buffer.channels.count);
+		memcpy(sideBufferEarly.samples, inputBuffer.samples, sizeof(float) * buffer.frames * buffer.channels.count);
 		azaProcessFilter(sideBufferEarly, data->filters[tap]);
 		azaProcessDelay(sideBufferEarly, data->delays[tap]);
 		azaBufferMix(sideBufferCombined, 1.0f, sideBufferEarly, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
 	}
 	for (int tap = AZAUDIO_REVERB_DELAY_COUNT*2/3; tap < AZAUDIO_REVERB_DELAY_COUNT; tap++) {
-		data->delays[tap]->config.feedback = (float)(tap+8) / (AZAUDIO_REVERB_DELAY_COUNT + 8.0f);
+		data->delays[tap]->config.feedback = (float)(tap+AZAUDIO_REVERB_DELAY_COUNT) / (AZAUDIO_REVERB_DELAY_COUNT*2);
 		data->filters[tap]->config.frequency = color*4.0f;
 		memcpy(sideBufferDiffuse.samples, sideBufferCombined.samples, sizeof(float) * buffer.frames * buffer.channels.count);
 		azaBufferCopyChannel(sideBufferDiffuse, 0, sideBufferCombined, 0);
@@ -853,9 +885,7 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 		azaBufferMix(sideBufferCombined, 1.0f, sideBufferDiffuse, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
 	}
 	azaBufferMix(buffer, amountDry, sideBufferCombined, amount);
-	azaPopSideBuffer();
-	azaPopSideBuffer();
-	azaPopSideBuffer();
+	azaPopSideBuffers(4);
 	if (data->header.pNext) {
 		return azaProcessDSP(buffer, data->header.pNext);
 	}

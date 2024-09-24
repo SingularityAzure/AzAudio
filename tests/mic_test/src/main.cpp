@@ -242,6 +242,7 @@ int main(int argumentCount, char** argumentValues) {
 			/* .gainDry    = */ 0.0f,
 			/* .delay      = */ 1234.5f,
 			/* .feedback   = */ 0.5f,
+			/* .pingpong   = */ 0.9f,
 			/* .wetEffects = */ nullptr,
 		}, outputChannelCount);
 
@@ -250,6 +251,7 @@ int main(int argumentCount, char** argumentValues) {
 			/* .gainDry    = */ 0.0f,
 			/* .delay      = */ 2345.6f,
 			/* .feedback   = */ 0.5f,
+			/* .pingpong   = */ 0.2f,
 			/* .wetEffects = */ nullptr,
 		}, outputChannelCount);
 
@@ -264,6 +266,7 @@ int main(int argumentCount, char** argumentValues) {
 			/* .gainDry    = */ 0.0f,
 			/* .delay      = */ 1000.0f / 3.0f,
 			/* .feedback   = */ 0.98f,
+			/* .pingpong   = */ 0.0f,
 			/* .wetEffects = */ (azaDSP*)delayWetFilter,
 		}, outputChannelCount);
 
@@ -276,9 +279,9 @@ int main(int argumentCount, char** argumentValues) {
 		reverb = azaMakeReverb(azaReverbConfig{
 			/* .gain     = */-15.0f,
 			/* .gainDry  = */ 0.0f,
-			/* .roomsize = */ 10.0f,
-			/* .color    = */ 0.5f,
-			/* .delay    = */ 0.0f,
+			/* .roomsize = */ 100.0f,
+			/* .color    = */ 1.0f,
+			/* .delay    = */ 200.0f,
 		}, outputChannelCount);
 		// TODO: maybe recreate this? reverbData[c].delay = c * 377.0f / 48000.0f;
 
