@@ -298,7 +298,7 @@ static void azaMixChannels(float *dst, int dstChannels, float *src, int srcChann
 		float *dstOffset = dst + dstC;
 		for (int srcC = 0; srcC < AZA_MAX(1, srcChannels / dstChannels); srcC++) {
 			float *srcOffset = src + srcC + dstC * srcChannels / dstChannels;
-			for (uint32_t i = 0; i < numFrames; i++) {
+			for (uint32_t i = 0; i < (uint32_t)numFrames; i++) {
 				dstOffset[i * dstChannels] += srcOffset[i * srcChannels] * amplification;
 			}
 		}
@@ -887,7 +887,7 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 		data->processingBuffer.frames = GetResampledFramecount(data->processingBuffer.samplerate, data->waveFormatExtensible.Format.nSamplesPerSec, data->deviceBufferFrames);
 		data->nativeBuffer.samples = calloc((data->deviceBufferFrames + AZA_RESAMPLING_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
 		data->nativeBufferStart = data->nativeBuffer.samples + (AZA_RESAMPLING_WINDOW * 2) * data->waveFormatExtensible.Format.nChannels;
-		data->nativeBuffer.channels = azaGetChannelLayoutFromMask(data->waveFormatExtensible.Format.nChannels, data->waveFormatExtensible.dwChannelMask);
+		data->nativeBuffer.channels = azaGetChannelLayoutFromMask((uint8_t)data->waveFormatExtensible.Format.nChannels, data->waveFormatExtensible.dwChannelMask);
 		data->processingBuffer.samples = calloc((data->processingBuffer.frames + AZA_RESAMPLING_WINDOW*2) * data->processingBuffer.channels.count, sizeof(float));
 		data->processingBufferStart = data->processingBuffer.samples + (AZA_RESAMPLING_WINDOW * 2) * data->processingBuffer.channels.count;
 		data->processingBuffer.channels = azaChannelLayoutStandardFromCount(data->processingBuffer.channels.count);
@@ -931,7 +931,7 @@ static void azaStreamSetActiveWASAPI(azaStream *stream, uint8_t active) {
 	azaMutexUnlock(&mutex);
 }
 
-static void azaStreamGetActiveWASAPI(azaStream *stream) {
+static uint8_t azaStreamGetActiveWASAPI(azaStream *stream) {
 	azaStreamData *data = stream->data;
 	return data->isActive;
 }

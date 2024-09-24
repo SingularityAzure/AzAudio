@@ -46,7 +46,7 @@ static inline float linstepf(float a, float min, float max) {
 
 // Like a % max except the answer is always in the range [0; max) even if the input is negative
 static inline int wrapi(int a, int max) {
-	assert(max > 0);
+	// assert(max > 0);
 	if (a < 0) {
 		return (a + 1) % max + max-1;
 	} else if (a > 0) {

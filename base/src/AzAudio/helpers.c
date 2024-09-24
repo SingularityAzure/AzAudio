@@ -55,7 +55,7 @@ float linc(float x) {
 }
 
 float lanczos(float x, float radius) {
-	float c = cos(x * AZA_PI * 0.5f / radius);
+	float c = cosf(x * AZA_PI * 0.5f / radius);
 	return sinc(x) * c*c;
 }
 

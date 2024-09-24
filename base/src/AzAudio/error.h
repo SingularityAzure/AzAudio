@@ -26,6 +26,8 @@ enum {
 	AZA_ERROR_NULL_POINTER,
 	// A dsp function was given a buffer with no channels
 	AZA_ERROR_INVALID_CHANNEL_COUNT,
+	// Two buffers were expected to have the same number of channels, but they didn't
+	AZA_ERROR_CHANNEL_COUNT_MISMATCH,
 	// A dsp function was given a buffer with no frames
 	AZA_ERROR_INVALID_FRAME_COUNT,
 	// Something wasn't configured right... check stderr

@@ -16,10 +16,10 @@
 extern "C" {
 #endif
 
-#define AZAUDIO_RMS_SAMPLES 128
 #define AZAUDIO_LOOKAHEAD_SAMPLES 128
 // The duration of transitions between the variable parameter values
 #define AZAUDIO_SAMPLER_TRANSITION_FRAMES 128
+
 
 
 // TODO: The most extreme setups can have 20 channels, but there may be no way to actually use that many channels effectively without a way to distinguish them (and the below are all you can get from the MMDevice API on Windows afaik). Should there be more information available, this part of the API will grow.
@@ -204,6 +204,7 @@ static inline azaChannelLayout azaChannelLayoutStandardFromCount(uint8_t count) 
 }
 
 
+
 // Buffer used by DSP functions for their input/output
 typedef struct azaBuffer {
 	// actual read/write-able data
@@ -230,8 +231,11 @@ void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc
 // Same as azaBufferMix, but the volumes will fade linearly across the buffer
 void azaBufferMixFade(azaBuffer dst, float volumeDstStart, float volumeDstEnd, azaBuffer src, float volumeSrcStart, float volumeSrcEnd);
 
+// Copies the contents of one buffer into the other. They must have the same number of frames and channels.
+void azaBufferCopy(azaBuffer dst, azaBuffer src);
+
 // Copies the contents of one channel of src into dst
-void azaBufferCopyChannel(azaBuffer dst, uint32_t channelDst, azaBuffer src, uint32_t channelSrc);
+void azaBufferCopyChannel(azaBuffer dst, uint8_t channelDst, azaBuffer src, uint8_t channelSrc);
 
 static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 	return AZA_CLITERAL(azaBuffer) {
@@ -244,11 +248,12 @@ static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 }
 
 
+
 typedef enum azaDSPKind {
 	AZA_DSP_NONE=0,
 	AZA_DSP_RMS,
-	AZA_DSP_FILTER,
 	AZA_DSP_LOOKAHEAD_LIMITER,
+	AZA_DSP_FILTER,
 	AZA_DSP_COMPRESSOR,
 	AZA_DSP_DELAY,
 	AZA_DSP_REVERB,
@@ -256,23 +261,91 @@ typedef enum azaDSPKind {
 	AZA_DSP_GATE,
 } azaDSPKind;
 
-// Generic interface to all the DSP datas
-typedef struct azaDSPData {
+// Generic interface to all the DSP structures
+typedef struct azaDSP {
 	azaDSPKind kind;
 	uint32_t structSize;
-	struct azaDSPData *pNext;
-} azaDSPData;
-int azaDSP(azaBuffer buffer, azaDSPData *data);
+	struct azaDSP *pNext;
+} azaDSP;
+int azaProcessDSP(azaBuffer buffer, azaDSP *data);
 
 
-typedef struct azaRmsData {
-	azaDSPData header;
-	float squared;
-	float buffer[AZAUDIO_RMS_SAMPLES];
+
+// Must be at the end of your DSP struct as it can have inline channel data
+typedef struct azaDSPChannelData {
+	uint8_t capInline;
+	uint8_t capAdditional;
+	uint8_t countActive;
+	uint8_t alignment;
+	uint32_t size;
+	void *additional;
+	// azaXXXChannelData inline[capInline];
+} azaDSPChannelData;
+
+
+
+typedef void (*fp_azaOp)(float *lhs, float rhs);
+void azaOpAdd(float *lhs, float rhs);
+void azaOpMax(float *lhs, float rhs);
+
+
+
+typedef struct azaRMSConfig {
+	uint32_t windowSamples;
+} azaRMSConfig;
+
+typedef struct azaRMSChannelData {
+	float squaredSum;
+} azaRMSChannelData;
+
+typedef struct azaRMS {
+	azaDSP header;
+	azaRMSConfig config;
+	uint32_t index;
+	uint32_t bufferCap;
+	float *buffer;
+	azaDSPChannelData channelData;
+	// float inlineBuffer[256]; // optional
+} azaRMS;
+azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline);
+void azaFreeRMS(azaRMS *data);
+// Takes the rms of all the channels combined with op and puts that into the first channel of dst
+int azaProcessRMSCombined(azaBuffer dst, azaBuffer src, azaRMS *data, fp_azaOp op);
+int azaProcessRMS(azaBuffer buffer, azaRMS *data);
+
+
+
+int azaProcessCubicLimiter(azaBuffer buffer);
+
+
+
+typedef struct azaLookaheadLimiterConfig {
+	// input gain in dB
+	float gainInput;
+	// output gain in dB
+	float gainOutput;
+} azaLookaheadLimiterConfig;
+
+typedef struct azaLookaheadLimiterChannelData {
+	float valBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
+} azaLookaheadLimiterChannelData;
+
+// NOTE: This limiter increases latency by AZAUDIO_LOOKAHEAD_SAMPLES samples
+typedef struct azaLookaheadLimiter {
+	azaDSP header;
+	azaLookaheadLimiterConfig config;
+
+	// Data shared by all channels
+	float gainBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
 	int index;
-} azaRmsData;
-void azaRmsDataInit(azaRmsData *data);
-int azaRms(azaBuffer buffer, azaRmsData *data);
+	float sum;
+
+	azaDSPChannelData channelData;
+} azaLookaheadLimiter;
+azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, uint8_t channelCapInline);
+void azaFreeLookaheadLimiter(azaLookaheadLimiter *data);
+int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data);
+
 
 
 typedef enum azaFilterKind {
@@ -281,55 +354,30 @@ typedef enum azaFilterKind {
 	AZA_FILTER_BAND_PASS,
 } azaFilterKind;
 
-typedef struct azaFilterData {
-	azaDSPData header;
-	float outputs[2];
-
-	// User configuration
-
+typedef struct azaFilterConfig {
 	azaFilterKind kind;
 	// Cutoff frequency in Hz
 	float frequency;
 	// Blends the effect output with the dry signal where 1 is fully dry and 0 is fully wet.
 	float dryMix;
-} azaFilterData;
-void azaFilterDataInit(azaFilterData *data);
-int azaFilter(azaBuffer buffer, azaFilterData *data);
+} azaFilterConfig;
+
+typedef struct azaFilterChannelData {
+	float outputs[2];
+} azaFilterChannelData;
+
+typedef struct azaFilter {
+	azaDSP header;
+	azaFilterConfig config;
+	azaDSPChannelData channelData;
+} azaFilter;
+azaFilter* azaMakeFilter(azaFilterConfig config, uint8_t channelCapInline);
+void azaFreeFilter(azaFilter *data);
+int azaProcessFilter(azaBuffer buffer, azaFilter *data);
 
 
 
-int azaCubicLimiter(azaBuffer buffer);
-
-
-
-// NOTE: This limiter increases latency by AZAUDIO_LOOKAHEAD_SAMPLES samples
-typedef struct azaLookaheadLimiterData {
-	azaDSPData header;
-	float gainBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
-	float valBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
-	int index;
-	float sum;
-
-	// User configuration
-
-	// input gain in dB
-	float gainInput;
-	// output gain in dB (should never peak higher than this)
-	float gainOutput;
-} azaLookaheadLimiterData;
-void azaLookaheadLimiterDataInit(azaLookaheadLimiterData *data);
-int azaLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiterData *data);
-
-
-
-typedef struct azaCompressorData {
-	azaDSPData header;
-	azaRmsData rmsData;
-	float attenuation;
-	float gain; // For monitoring/debugging
-
-	// User configuration
-
+typedef struct azaCompressorConfig {
 	// Activation threshold in dB
 	float threshold;
 	// positive values allow 1/ratio of the overvolume through
@@ -339,22 +387,22 @@ typedef struct azaCompressorData {
 	float attack;
 	// decay time in ms
 	float decay;
-} azaCompressorData;
-void azaCompressorDataInit(azaCompressorData *data);
-int azaCompressor(azaBuffer buffer, azaCompressorData *data);
+} azaCompressorConfig;
+
+typedef struct azaCompressor {
+	azaDSP header;
+	azaCompressorConfig config;
+	azaRMS *rms;
+	float attenuation;
+	float gain; // For monitoring/debugging
+} azaCompressor;
+azaCompressor* azaMakeCompressor(azaCompressorConfig config);
+void azaFreeCompressor(azaCompressor *data);
+int azaProcessCompressor(azaBuffer buffer, azaCompressor *data);
 
 
 
-typedef struct azaDelayData {
-	azaDSPData header;
-	float *buffer; // Must be dynamically-allocated to allow different time spans
-	size_t capacity;
-	// Needs to be kept track of to handle the resizing of buffer gracefully
-	size_t delaySamples;
-	size_t index;
-
-	// User configuration
-
+typedef struct azaDelayConfig {
 	// effect gain in dB
 	float gain;
 	// dry gain in dB
@@ -364,22 +412,34 @@ typedef struct azaDelayData {
 	// 0 to 1 multiple of output feeding back into input
 	float feedback;
 	// You can provide a chain of effects to operate on the wet output
-	azaDSPData *wetEffects;
-} azaDelayData;
-void azaDelayDataInit(azaDelayData *data);
-void azaDelayDataDeinit(azaDelayData *data);
-int azaDelay(azaBuffer buffer, azaDelayData *data);
+	azaDSP *wetEffects;
+} azaDelayConfig;
+
+typedef struct azaDelayChannelData {
+	float *buffer;
+	uint32_t delaySamples;
+	uint32_t index;
+	// extra delay time in ms
+	float delay;
+} azaDelayChannelData;
+
+typedef struct azaDelay {
+	azaDSP header;
+	azaDelayConfig config;
+	// Combined big buffer that gets split for each channel
+	float *buffer;
+	uint32_t bufferCap;
+	azaDSPChannelData channelData;
+} azaDelay;
+azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline);
+void azaFreeDelay(azaDelay *data);
+int azaProcessDelay(azaBuffer buffer, azaDelay *data);
+// Call this for each channel individually
+azaDelayChannelData* azaDelayGetChannelData(azaDelay *data, uint8_t channel);
 
 
 
-#define AZAUDIO_REVERB_DELAY_COUNT 15
-typedef struct azaReverbData {
-	azaDSPData header;
-	azaDelayData delayDatas[AZAUDIO_REVERB_DELAY_COUNT];
-	azaFilterData filterDatas[AZAUDIO_REVERB_DELAY_COUNT];
-
-	// User configuration
-
+typedef struct azaReverbConfig {
 	// effect gain in dB
 	float gain;
 	// dry gain in dB
@@ -390,41 +450,44 @@ typedef struct azaReverbData {
 	float color;
 	// delay for first reflections in ms
 	float delay;
-} azaReverbData;
-void azaReverbDataInit(azaReverbData *data);
-void azaReverbDataDeinit(azaReverbData *data);
-int azaReverb(azaBuffer buffer, azaReverbData *data);
+} azaReverbConfig;
+
+#define AZAUDIO_REVERB_DELAY_COUNT 15
+typedef struct azaReverb {
+	azaDSP header;
+	azaReverbConfig config;
+	azaDelay *delays[AZAUDIO_REVERB_DELAY_COUNT];
+	azaFilter *filters[AZAUDIO_REVERB_DELAY_COUNT];
+} azaReverb;
+azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline);
+void azaFreeReverb(azaReverb *data);
+int azaProcessReverb(azaBuffer buffer, azaReverb *data);
 
 
 
-typedef struct azaSamplerData {
-	azaDSPData header;
-	float frame;
-	float s; // Smooth speed
-	float g; // Smooth gain
-
-	// User configuration
-
+typedef struct azaSamplerConfig {
 	// buffer containing the sound we're sampling
 	azaBuffer *buffer;
 	// playback speed as a multiple where 1 is full speed
 	float speed;
 	// volume of effect in dB
 	float gain;
-} azaSamplerData;
-int azaSamplerDataInit(azaSamplerData *data);
-int azaSampler(azaBuffer buffer, azaSamplerData *data);
+} azaSamplerConfig;
+
+typedef struct azaSampler {
+	azaDSP header;
+	azaSamplerConfig config;
+	float frame;
+	float s; // Smooth speed
+	float g; // Smooth gain
+} azaSampler;
+azaSampler* azaMakeSampler(azaSamplerConfig config);
+void azaFreeSampler(azaSampler *data);
+int azaProcessSampler(azaBuffer buffer, azaSampler *data);
 
 
 
-typedef struct azaGateData {
-	azaDSPData header;
-	azaRmsData rms;
-	float attenuation;
-	float gain;
-
-	// User configuration
-
+typedef struct azaGateConfig {
 	// cutoff threshold in dB
 	float threshold;
 	// attack time in ms
@@ -432,10 +495,19 @@ typedef struct azaGateData {
 	// decay time in ms
 	float decay;
 	// Any effects to apply to the activation signal
-	azaDSPData *activationEffects;
-} azaGateData;
-void azaGateDataInit(azaGateData *data);
-int azaGate(azaBuffer buffer, azaGateData *data);
+	azaDSP *activationEffects;
+} azaGateConfig;
+
+typedef struct azaGate {
+	azaDSP header;
+	azaGateConfig config;
+	azaRMS *rms;
+	float attenuation;
+	float gain;
+} azaGate;
+azaGate* azaMakeGate(azaGateConfig config);
+void azaFreeGate(azaGate *data);
+int azaProcessGate(azaBuffer buffer, azaGate *data);
 
 
 

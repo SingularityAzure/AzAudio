@@ -33,6 +33,7 @@ target_include_directories(AzAudio PUBLIC
 
 if (CMAKE_SYSTEM MATCHES Windows)
 	target_link_libraries(AzAudio INTERFACE ksuser Winmm)
+	set_property(TARGET AzAudio PROPERTY C_STANDARD 11)
 elseif (CMAKE_SYSTEM MATCHES Linux)
 	target_link_libraries(AzAudio INTERFACE pthread)
 

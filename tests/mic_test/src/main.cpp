@@ -47,18 +47,16 @@ void logCallback(AzaLogLevel level, const char* format, ...) {
 	sys::cout << buffer;
 }
 
-#define NUM_CHANNELS 2
-
-azaLookaheadLimiterData limiterData[NUM_CHANNELS] = {{}};
-azaCompressorData compressorData[NUM_CHANNELS] = {{}};
-azaDelayData delayData[NUM_CHANNELS] = {{}};
-azaDelayData delay2Data[NUM_CHANNELS] = {{}};
-azaDelayData delay3Data[NUM_CHANNELS] = {{}};
-azaReverbData reverbData[NUM_CHANNELS] = {{}};
-azaFilterData highPassData[NUM_CHANNELS] = {{}};
-azaGateData gateData[NUM_CHANNELS] = {{}};
-azaFilterData gateBandPass[NUM_CHANNELS] = {{}};
-azaFilterData delayWetFilterData[NUM_CHANNELS] = {{}};
+azaLookaheadLimiter *limiter = nullptr;
+azaCompressor *compressor = nullptr;
+azaDelay *delay = nullptr;
+azaDelay *delay2 = nullptr;
+azaDelay *delay3 = nullptr;
+azaReverb *reverb = nullptr;
+azaFilter *highPass = nullptr;
+azaGate *gate = nullptr;
+azaFilter *gateBandPass = nullptr;
+azaFilter *delayWetFilter = nullptr;
 
 std::vector<float> micBuffer;
 size_t lastMicBufferSize=0;
@@ -134,34 +132,31 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		0.0f,
 		// 0.0f,
 	};
+	if ((err = azaProcessGate(srcBuffer, gate))) {
+		return err;
+	}
 	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
 	azaSpatializeSimple(buffer, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
-	// if ((err = azaFilter(buffer, delayWetFilterData))) {
-	// 	return err;
-	// }
-	// if ((err = azaGate(buffer, gateData))) {
-	// 	return err;
-	// }
-	// printf("gate gain: %f\n", gateData->gain);
-	// if ((err = azaDelay(buffer, delayData))) {
-	// 	return err;
-	// }
-	// if ((err = azaDelay(buffer, delay2Data))) {
-	// 	return err;
-	// }
-	// if ((err = azaDelay(buffer, delay3Data))) {
-	// 	return err;
-	// }
-	// if ((err = azaReverb(buffer, reverbData))) {
-	// 	return err;
-	// }
-	// if ((err = azaFilter(buffer, highPassData))) {
-	// 	return err;
-	// }
-	// if ((err = azaCompressor(buffer, compressorData))) {
-	// 	return err;
-	// }
-	if ((err = azaLookaheadLimiter(buffer, limiterData))) {
+	// printf("gate gain: %f\n", gate->gain);
+	if ((err = azaProcessDelay(buffer, delay))) {
+		return err;
+	}
+	if ((err = azaProcessDelay(buffer, delay2))) {
+		return err;
+	}
+	if ((err = azaProcessDelay(buffer, delay3))) {
+		return err;
+	}
+	if ((err = azaProcessReverb(buffer, reverb))) {
+		return err;
+	}
+	if ((err = azaProcessFilter(buffer, highPass))) {
+		return err;
+	}
+	if ((err = azaProcessCompressor(buffer, compressor))) {
+		return err;
+	}
+	if (err = azaProcessLookaheadLimiter(buffer, limiter)) {
 		return err;
 	}
 	return AZA_SUCCESS;
@@ -220,78 +215,102 @@ int main(int argumentCount, char** argumentValues) {
 		streamInput.channels = azaStreamGetChannelLayout(&streamInput);
 		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
 		azaStream streamOutput = {0};
-		streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
+		// streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
 		streamOutput.samplerate = streamInput.samplerate;
 		streamOutput.mixCallback = mixCallbackOutput;
 		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
 			throw a_fit("Failed to init output stream!");
 		}
-		for (int c = 0; c < NUM_CHANNELS; c++) {
-			gateData[c].threshold = -42.0f;
-			gateData[c].attack = 10.0f;
-			gateData[c].decay = 500.0f;
-			azaGateDataInit(&gateData[c]);
-			gateData[c].activationEffects = (azaDSPData*)&gateBandPass[c];
+		uint8_t outputChannelCount = azaStreamGetChannelLayout(&streamOutput).count;
+		// Configure all the DSP functions
+		// gate runs on the single-channel mic buffer
+		gateBandPass = azaMakeFilter(azaFilterConfig{
+			/* .kind      = */ AZA_FILTER_BAND_PASS,
+			/* .frequency = */ 300.0f,
+			/* .dryMix    = */ 0.0f,
+		}, 1);
 
-			gateBandPass[c].kind = AZA_FILTER_BAND_PASS;
-			gateBandPass[c].frequency = 300.0f;
-			azaFilterDataInit(&gateBandPass[c]);
+		gate = azaMakeGate(azaGateConfig{
+			/* .threshold         = */-42.0f,
+			/* .attack            = */ 10.0f,
+			/* .decay             = */ 500.0f,
+			/* .activationEffects = */ (azaDSP*)gateBandPass,
+		});
 
-			delayData[c].gain = -15.0f;
-			delayData[c].gainDry = 0.0f;
-			delayData[c].delay = 1234.5f;
-			delayData[c].feedback = 0.5f;
-			azaDelayDataInit(&delayData[c]);
+		delay = azaMakeDelay(azaDelayConfig{
+			/* .gain       = */-15.0f,
+			/* .gainDry    = */ 0.0f,
+			/* .delay      = */ 1234.5f,
+			/* .feedback   = */ 0.5f,
+			/* .wetEffects = */ nullptr,
+		}, outputChannelCount);
 
-			delay2Data[c].gain = -15.0f;
-			delay2Data[c].gainDry = 0.0f;
-			delay2Data[c].delay = 2345.6f;
-			delay2Data[c].feedback = 0.5f;
-			azaDelayDataInit(&delay2Data[c]);
+		delay2 = azaMakeDelay(azaDelayConfig{
+			/* .gain       = */-15.0f,
+			/* .gainDry    = */ 0.0f,
+			/* .delay      = */ 2345.6f,
+			/* .feedback   = */ 0.5f,
+			/* .wetEffects = */ nullptr,
+		}, outputChannelCount);
 
-			delay3Data[c].gain = -15.0f;
-			delay3Data[c].gainDry = 0.0f;
-			delay3Data[c].delay = 1000.0f / 3.0f;
-			delay3Data[c].feedback = 0.98f;
-			azaDelayDataInit(&delay3Data[c]);
-			delay3Data[c].wetEffects = (azaDSPData*)&delayWetFilterData[c];
+		delayWetFilter = azaMakeFilter(azaFilterConfig{
+			/* .kind      = */ AZA_FILTER_BAND_PASS,
+			/* .frequency = */ 800.0f,
+			/* .dryMix    = */ 0.5f,
+		}, outputChannelCount);
 
-			delayWetFilterData[c].kind = AZA_FILTER_BAND_PASS;
-			delayWetFilterData[c].frequency = 800.0f;
-			delayWetFilterData[c].dryMix = 0.5f;
-			azaFilterDataInit(&delayWetFilterData[c]);
+		delay3 = azaMakeDelay(azaDelayConfig{
+			/* .gain       = */-15.0f,
+			/* .gainDry    = */ 0.0f,
+			/* .delay      = */ 1000.0f / 3.0f,
+			/* .feedback   = */ 0.98f,
+			/* .wetEffects = */ (azaDSP*)delayWetFilter,
+		}, outputChannelCount);
 
-			highPassData[c].kind = AZA_FILTER_HIGH_PASS;
-			highPassData[c].frequency = 50.0f;
-			azaFilterDataInit(&highPassData[c]);
+		highPass = azaMakeFilter(azaFilterConfig{
+			/* .kind      = */ AZA_FILTER_HIGH_PASS,
+			/* .frequency = */ 50.0f,
+			/* .dryMix    = */ 0.0f,
+		}, outputChannelCount);
 
-			reverbData[c].gain = -15.0f;
-			reverbData[c].gainDry = 0.0f;
-			reverbData[c].roomsize = 10.0f;
-			reverbData[c].color = 0.5f;
-			reverbData[c].delay = c * 377.0f / 48000.0f;
-			azaReverbDataInit(&reverbData[c]);
+		reverb = azaMakeReverb(azaReverbConfig{
+			/* .gain     = */-15.0f,
+			/* .gainDry  = */ 0.0f,
+			/* .roomsize = */ 10.0f,
+			/* .color    = */ 0.5f,
+			/* .delay    = */ 0.0f,
+		}, outputChannelCount);
+		// TODO: maybe recreate this? reverbData[c].delay = c * 377.0f / 48000.0f;
 
-			compressorData[c].threshold = -24.0f;
-			compressorData[c].ratio = 10.0f;
-			compressorData[c].attack = 100.0f;
-			compressorData[c].decay = 200.0f;
-			azaCompressorDataInit(&compressorData[c]);
+		compressor = azaMakeCompressor(azaCompressorConfig{
+			/* .threshold = */-24.0f,
+			/* .ratio     = */ 10.0f,
+			/* .attack    = */ 100.0f,
+			/* .decay     = */ 200.0f,
+		});
 
-			limiterData[c].gainInput = 24.0f;
-			limiterData[c].gainOutput = -6.0f;
-			azaLookaheadLimiterDataInit(&limiterData[c]);
-		}
+		limiter = azaMakeLookaheadLimiter(azaLookaheadLimiterConfig{
+			/* .gainInput  = */ 24.0f,
+			/* .gainOutput = */-6.0f,
+		}, outputChannelCount);
+
 		azaStreamSetActive(&streamInput, 1);
 		azaStreamSetActive(&streamOutput, 1);
 		std::cout << "Press ENTER to stop" << std::endl;
 		std::cin.get();
 		azaStreamDeinit(&streamInput);
 		azaStreamDeinit(&streamOutput);
-		for (int c = 0; c < NUM_CHANNELS; c++) {
-			azaDelayDataDeinit(&delayData[c]);
-			azaReverbDataDeinit(&reverbData[c]);
-		}
+
+		azaFreeLookaheadLimiter(limiter);
+		azaFreeCompressor(compressor);
+		azaFreeDelay(delay);
+		azaFreeDelay(delay2);
+		azaFreeDelay(delay3);
+		azaFreeReverb(reverb);
+		azaFreeFilter(highPass);
+		azaFreeGate(gate);
+		azaFreeFilter(gateBandPass);
+		azaFreeFilter(delayWetFilter);
 
 		azaDeinit();
 	} catch (std::runtime_error& e) {
