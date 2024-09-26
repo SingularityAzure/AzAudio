@@ -85,10 +85,6 @@ float aza_amp_to_dbf(float amp) {
 	return log10f(amp)*20.0f;
 }
 
-size_t aza_ms_to_samples(float ms, float samplerate) {
-	return (size_t)(ms * samplerate * 0.001f);
-}
-
 size_t aza_align(size_t size, size_t alignment) {
 	return (size + alignment-1) & ~(alignment-1);
 }

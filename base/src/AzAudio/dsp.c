@@ -35,6 +35,8 @@ thread_local azaBuffer sideBufferPool[AZA_MAX_SIDE_BUFFERS] = {{0}};
 thread_local size_t sideBufferCapacity[AZA_MAX_SIDE_BUFFERS] = {0};
 thread_local size_t sideBuffersInUse = 0;
 
+azaKernel azaKernelDefaultLanczos;
+
 azaWorld azaWorldDefault;
 
 static azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate) {
@@ -428,8 +430,6 @@ static float azaCubicLimiterSample(float sample) {
 		sample = 1.0f;
 	else if (sample < -1.0f)
 		sample = -1.0f;
-	else
-		sample = sample;
 	sample = 1.5f * sample - 0.5f * sample * sample * sample;
 	return sample;
 }
@@ -665,9 +665,9 @@ int azaProcessCompressor(azaBuffer buffer, azaCompressor *data) {
 
 
 
-azaDelayChannelData* azaDelayGetChannelData(azaDelay *data, uint8_t channel) {
-	azaDelayChannelData *result = azaGetChannelData(&data->channelData, channel);
-	return result;
+azaDelayChannelConfig* azaDelayGetChannelConfig(azaDelay *data, uint8_t channel) {
+	azaDelayChannelData *channelData = azaGetChannelData(&data->channelData, channel);
+	return &channelData->config;
 }
 
 static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uint8_t channelCount) {
@@ -677,7 +677,7 @@ static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uin
 	uint8_t realloc = 0;
 	for (uint8_t c = 0; c < channelCount; c++) {
 		azaDelayChannelData *channelData = azaGetChannelData(&data->channelData, c);
-		uint32_t delaySamples = (uint32_t)aza_ms_to_samples(data->config.delay + channelData->delay, (float)samplerate);
+		uint32_t delaySamples = (uint32_t)aza_ms_to_samples(data->config.delay + channelData->config.delay, (float)samplerate);
 		if (delaySamples > delaySamplesMax) delaySamplesMax = delaySamples;
 		if (channelData->delaySamples >= delaySamples) {
 			if (channelData->index > delaySamples) {
@@ -702,7 +702,7 @@ static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uin
 		}
 		channelData->buffer = newChannelBuffer;
 		// We also have to set delaySamples since we didn't do it above
-		channelData->delaySamples = (uint32_t)aza_ms_to_samples(data->config.delay + channelData->delay, (float)samplerate);
+		channelData->delaySamples = (uint32_t)aza_ms_to_samples(data->config.delay + channelData->config.delay, (float)samplerate);
 	}
 	if (data->buffer) {
 		free(data->buffer);
@@ -792,36 +792,36 @@ azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline) {
 	}, channelCapInline);
 
 	float delays[AZAUDIO_REVERB_DELAY_COUNT] = {
-		AZA_SAMPLES_TO_MS(2111, 48000),
-		AZA_SAMPLES_TO_MS(2129, 48000),
-		AZA_SAMPLES_TO_MS(2017, 48000),
-		AZA_SAMPLES_TO_MS(2029, 48000),
-		AZA_SAMPLES_TO_MS(1753, 48000),
-		AZA_SAMPLES_TO_MS(1733, 48000),
-		AZA_SAMPLES_TO_MS(1699, 48000),
-		AZA_SAMPLES_TO_MS(1621, 48000),
-		AZA_SAMPLES_TO_MS(1447, 48000),
-		AZA_SAMPLES_TO_MS(1429, 48000),
-		AZA_SAMPLES_TO_MS(1361, 48000),
-		AZA_SAMPLES_TO_MS(1319, 48000),
-		AZA_SAMPLES_TO_MS(1201, 48000),
-		AZA_SAMPLES_TO_MS(1171, 48000),
-		AZA_SAMPLES_TO_MS(1129, 48000),
-		AZA_SAMPLES_TO_MS(1117, 48000),
-		AZA_SAMPLES_TO_MS(1063, 48000),
-		AZA_SAMPLES_TO_MS(1051, 48000),
-		AZA_SAMPLES_TO_MS(1039, 48000),
-		AZA_SAMPLES_TO_MS(1009, 48000),
-		AZA_SAMPLES_TO_MS( 977, 48000),
-		AZA_SAMPLES_TO_MS( 919, 48000),
-		AZA_SAMPLES_TO_MS( 857, 48000),
-		AZA_SAMPLES_TO_MS( 773, 48000),
-		AZA_SAMPLES_TO_MS( 743, 48000),
-		AZA_SAMPLES_TO_MS( 719, 48000),
-		AZA_SAMPLES_TO_MS( 643, 48000),
-		AZA_SAMPLES_TO_MS( 641, 48000),
-		AZA_SAMPLES_TO_MS( 631, 48000),
-		AZA_SAMPLES_TO_MS( 619, 48000),
+		aza_samples_to_ms(2111, 48000),
+		aza_samples_to_ms(2129, 48000),
+		aza_samples_to_ms(2017, 48000),
+		aza_samples_to_ms(2029, 48000),
+		aza_samples_to_ms(1753, 48000),
+		aza_samples_to_ms(1733, 48000),
+		aza_samples_to_ms(1699, 48000),
+		aza_samples_to_ms(1621, 48000),
+		aza_samples_to_ms(1447, 48000),
+		aza_samples_to_ms(1429, 48000),
+		aza_samples_to_ms(1361, 48000),
+		aza_samples_to_ms(1319, 48000),
+		aza_samples_to_ms(1201, 48000),
+		aza_samples_to_ms(1171, 48000),
+		aza_samples_to_ms(1129, 48000),
+		aza_samples_to_ms(1117, 48000),
+		aza_samples_to_ms(1063, 48000),
+		aza_samples_to_ms(1051, 48000),
+		aza_samples_to_ms(1039, 48000),
+		aza_samples_to_ms(1009, 48000),
+		aza_samples_to_ms( 977, 48000),
+		aza_samples_to_ms( 919, 48000),
+		aza_samples_to_ms( 857, 48000),
+		aza_samples_to_ms( 773, 48000),
+		aza_samples_to_ms( 743, 48000),
+		aza_samples_to_ms( 719, 48000),
+		aza_samples_to_ms( 643, 48000),
+		aza_samples_to_ms( 641, 48000),
+		aza_samples_to_ms( 631, 48000),
+		aza_samples_to_ms( 619, 48000),
 	};
 	for (int i = 0; i < AZAUDIO_REVERB_DELAY_COUNT; i++) {
 		result->delays[i] = azaMakeDelay((azaDelayConfig) {
@@ -1046,6 +1046,179 @@ int azaProcessGate(azaBuffer buffer, azaGate *data) {
 		return azaProcessDSP(buffer, data->header.pNext);
 	}
 	return AZA_SUCCESS;
+}
+
+
+
+azaDelayDynamicChannelConfig* azaDelayDynamicGetChannelConfig(azaDelayDynamic *data, uint8_t channel) {
+	azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, channel);
+	return &channelData->config;
+}
+
+static azaKernel* azaDelayDynamicGetKernel(azaDelayDynamic *data) {
+	azaKernel *kernel = data->config.kernel;
+	if (!kernel) {
+		kernel = &azaKernelDefaultLanczos;
+	}
+	return kernel;
+}
+
+// Handles resizing of buffers if needed
+static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer src) {
+	// TODO: Probably track channel layouts and handle them changing. Right now the buffers will break if the number of channels changes.
+	azaEnsureChannels(&data->channelData, src.channels.count);
+	uint32_t kernelSamples;
+	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
+	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
+	kernelSamples = 0;
+	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)src.samplerate) + kernelSamples;
+	uint32_t totalSamplesNeeded = delaySamplesMax + src.frames;
+	uint32_t perChannelBufferCap = data->bufferCap / src.channels.count;
+	if (perChannelBufferCap >= totalSamplesNeeded) return;
+	// Have to realloc buffer
+	uint32_t newPerChannelBufferCap = (uint32_t)aza_grow(perChannelBufferCap, totalSamplesNeeded, 256);
+	float *newBuffer = calloc(sizeof(float), newPerChannelBufferCap * src.channels.count);
+	for (uint8_t c = 0; c < src.channels.count; c++) {
+		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
+		float *newChannelBuffer = newBuffer + c * newPerChannelBufferCap;
+		if (data->buffer) {
+			memcpy(newChannelBuffer + newPerChannelBufferCap - perChannelBufferCap, channelData->buffer, sizeof(float) * perChannelBufferCap);
+		}
+		channelData->buffer = newChannelBuffer;
+		// Maybe we don't have to do this because we probably do it in Process
+		// channelData->delaySamples = aza_ms_to_samples(channelData->config.delay, (float)samplerate);
+	}
+	if (data->buffer) {
+		free(data->buffer);
+	}
+	data->buffer = newBuffer;
+	data->bufferCap = newPerChannelBufferCap * src.channels.count;
+}
+
+// Puts new audio data into the buffer for immediate sampling. Assumes azaDelayDynamicHandleBufferResizes was called already.
+static void azaDelayDynamicPrimeBuffer(azaDelayDynamic *data, azaBuffer src) {
+	uint32_t kernelSamples;
+	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
+	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
+	kernelSamples = 0;
+	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)src.samplerate) + kernelSamples;
+	for (uint8_t c = 0; c < src.channels.count; c++) {
+		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
+		// Move existing buffer back to make room for new buffer data
+		// This should work because we're expecting each buffer to be at least delaySamplesMax+src.frames in size
+		for (uint32_t i = 0; i < delaySamplesMax; i++) {
+			channelData->buffer[i] = channelData->buffer[i+src.frames];
+		}
+		azaBufferCopyChannel((azaBuffer) {
+			.samples = channelData->buffer + delaySamplesMax,
+			.samplerate = src.samplerate,
+			.frames = src.frames,
+			.stride = 1,
+			.channels = (azaChannelLayout) { .count = 1 },
+		}, 0, src, c);
+	}
+}
+
+azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t channelCapInline, uint8_t channelCount, azaDelayDynamicChannelConfig *channelConfigs) {
+	uint32_t size = sizeof(azaDelayDynamic) + channelCapInline * sizeof(azaDelayDynamicChannelData);
+	azaDelayDynamic *result = calloc(1, size);
+	result->header.kind = AZA_DSP_DELAY_DYNAMIC;
+	result->header.structSize = size;
+	result->config = config;
+	azaDSPChannelDataInit(&result->channelData, channelCapInline, alignof(azaDelayDynamicChannelData), sizeof(azaDelayDynamicChannelData));
+	azaEnsureChannels(&result->channelData, channelCount);
+	if (channelConfigs) {
+		for (uint8_t c = 0; c < channelCount; c++) {
+			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(result, c);
+			*channelConfig = channelConfigs[c];
+		}
+	}
+	return result;
+}
+
+void azaFreeDelayDynamic(azaDelayDynamic *data) {
+	if (data->buffer) {
+		free(data->buffer);
+	}
+	free(data);
+}
+
+int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays) {
+	int err = AZA_SUCCESS;
+	uint8_t numSideBuffers = 0;
+	if (data == NULL) {
+		err = AZA_ERROR_NULL_POINTER;
+		goto error;
+	} else {
+		err = azaCheckBuffer(buffer);
+		if (err) goto error;
+	}
+	azaKernel *kernel = azaDelayDynamicGetKernel(data);
+	azaBuffer inputBuffer;
+	if (data->config.wetEffects) {
+		inputBuffer = azaPushSideBufferCopy(buffer);
+		numSideBuffers++;
+		err = azaProcessDSP(inputBuffer, data->config.wetEffects);
+		if (err) goto error;
+	} else {
+		inputBuffer = buffer;
+	}
+	azaDelayDynamicHandleBufferResizes(data, inputBuffer);
+	// TODO: Verify whether this matters. It was difficult to tell whether there was any problem with not factoring in the kernel (which I suppose would only matter for very close to 0 delay).
+	int kernelSamplesLeft, kernelSamplesRight;
+	// if (kernel->isSymmetrical) {
+	// 	kernelSamplesLeft = (int)ceilf(kernel->length);
+	// 	kernelSamplesRight = (int)ceilf(kernel->length);
+	// } else {
+	// 	kernelSamplesLeft = 0;
+	// 	kernelSamplesRight = (int)ceilf(kernel->length);
+	// }
+	kernelSamplesLeft = 0;
+	kernelSamplesRight = 0;
+	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)buffer.samplerate);
+	for (uint8_t c = 0; c < buffer.channels.count; c++) {
+		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
+		float startIndex = (float)delaySamplesMax - aza_ms_to_samples(channelData->config.delay, (float)buffer.samplerate);
+		float endIndex = startIndex + (float)buffer.frames;
+		if (endChannelDelays) {
+			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
+		}
+		uint8_t c2 = (c + 1) % buffer.channels.count;
+		for (uint32_t i = 0; i < buffer.frames; i++) {
+			float index = lerp(startIndex, endIndex, (float)i / (float)buffer.frames);
+			uint32_t s = i * buffer.stride + c;
+			float toAdd = inputBuffer.samples[s];
+			if (data->config.feedback != 0.0f) {
+			 	toAdd += azaSampleWithKernel(channelData->buffer+kernelSamplesLeft, 1, -kernelSamplesLeft, delaySamplesMax+kernelSamplesRight+buffer.frames, kernel, index) * data->config.feedback;
+			}
+			inputBuffer.samples[i * inputBuffer.stride + c] += toAdd * (1.0f - data->config.pingpong);
+			inputBuffer.samples[i * inputBuffer.stride + c2] += toAdd * data->config.pingpong;
+		}
+	}
+	azaDelayDynamicPrimeBuffer(data, inputBuffer);
+	for (uint8_t c = 0; c < buffer.channels.count; c++) {
+		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
+		float startIndex = (float)delaySamplesMax - aza_ms_to_samples(channelData->config.delay, (float)buffer.samplerate);
+		float endIndex = startIndex + (float)buffer.frames;
+		if (endChannelDelays) {
+			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
+			channelData->config.delay = endChannelDelays[c];
+		}
+		float amount = aza_db_to_ampf(data->config.gain);
+		float amountDry = aza_db_to_ampf(data->config.gainDry);
+		for (uint32_t i = 0; i < buffer.frames; i++) {
+			float index = lerp(startIndex, endIndex, (float)i / (float)buffer.frames);
+			uint32_t s = i * buffer.stride + c;
+			float wet = azaSampleWithKernel(channelData->buffer+kernelSamplesLeft, 1, -kernelSamplesLeft, delaySamplesMax+kernelSamplesRight+buffer.frames, kernel, index);
+			buffer.samples[s] = wet * amount + buffer.samples[s] * amountDry;
+		}
+	}
+	if (data->header.pNext) {
+		return azaProcessDSP(buffer, data->header.pNext);
+	}
+error:
+	azaPopSideBuffers(numSideBuffers);
+	return err;
 }
 
 
@@ -1337,11 +1510,6 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPo
 		totalMagnitudeStart += channelsStart[i].amp;
 		totalMagnitudeEnd += channelsEnd[i].amp;
 	}
-
-	float ampMaxRangeStart = 1.0f;
-	float ampMaxRangeEnd = 1.0f;
-	float ampMinRangeStart = 0.0f;
-	float ampMinRangeEnd = 0.0f;
 
 	if (dstBuffer.channels.count > 2) {
 		int minChannel = 2;

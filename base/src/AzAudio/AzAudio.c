@@ -35,6 +35,9 @@ int azaInit() {
 		}
 	}
 	AZA_LOG_INFO("AzAudio Version: " AZA_VERSION_FORMAT_STR "\n", AZA_VERSION_ARGS);
+
+	azaKernelMakeLanczos(&azaKernelDefaultLanczos, 128.0f, 50.0f);
+
 	memset(&azaWorldDefault, 0, sizeof(azaWorldDefault));
 	azaWorldDefault.orientation.right   = (azaVec3) { 1.0f, 0.0f, 0.0f };
 	azaWorldDefault.orientation.up      = (azaVec3) { 0.0f, 1.0f, 0.0f };

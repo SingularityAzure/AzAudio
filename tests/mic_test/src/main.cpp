@@ -9,6 +9,7 @@
 
 #include <cstdarg>
 
+#include "AzAudio/dsp.h"
 #include "log.hpp"
 #include "AzAudio/AzAudio.h"
 #include "AzAudio/error.h"
@@ -57,6 +58,7 @@ azaFilter *highPass = nullptr;
 azaGate *gate = nullptr;
 azaFilter *gateBandPass = nullptr;
 azaFilter *delayWetFilter = nullptr;
+azaDelayDynamic *delayDynamic = nullptr;
 
 std::vector<float> micBuffer;
 size_t lastMicBufferSize=0;
@@ -65,6 +67,8 @@ size_t numOutputBuffers=0;
 size_t numInputBuffers=0;
 
 float angle = 0.0f;
+float angle2 = 0.0f;
+std::vector<float> endChannelDelays;
 
 int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	static float *processingBuffer = new float[2048];
@@ -122,7 +126,8 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		0.0f,
 		// 0.0f,
 	};
-	angle += (float)buffer.frames / (float)buffer.samplerate;
+	// angle += (float)buffer.frames / (float)buffer.samplerate;
+	angle2 += ((float)buffer.frames / (float)buffer.samplerate) * AZA_TAU * 0.125f;
 	if (angle > AZA_TAU) {
 		angle -= AZA_TAU;
 	}
@@ -138,25 +143,32 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
 	azaSpatializeSimple(buffer, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
 	// printf("gate gain: %f\n", gate->gain);
-	if ((err = azaProcessDelay(buffer, delay))) {
+	endChannelDelays.resize(buffer.channels.count);
+	for (float &delay : endChannelDelays) {
+		delay = 600.0f + sinf(angle2) * 400.0f;
+	}
+	if ((err = azaProcessDelayDynamic(buffer, delayDynamic, endChannelDelays.data()))) {
 		return err;
 	}
-	if ((err = azaProcessDelay(buffer, delay2))) {
-		return err;
-	}
-	if ((err = azaProcessDelay(buffer, delay3))) {
-		return err;
-	}
-	if ((err = azaProcessReverb(buffer, reverb))) {
-		return err;
-	}
+	// if ((err = azaProcessDelay(buffer, delay))) {
+	// 	return err;
+	// }
+	// if ((err = azaProcessDelay(buffer, delay2))) {
+	// 	return err;
+	// }
+	// if ((err = azaProcessDelay(buffer, delay3))) {
+	// 	return err;
+	// }
+	// if ((err = azaProcessReverb(buffer, reverb))) {
+	// 	return err;
+	// }
 	if ((err = azaProcessFilter(buffer, highPass))) {
 		return err;
 	}
 	if ((err = azaProcessCompressor(buffer, compressor))) {
 		return err;
 	}
-	if (err = azaProcessLookaheadLimiter(buffer, limiter)) {
+	if ((err = azaProcessLookaheadLimiter(buffer, limiter))) {
 		return err;
 	}
 	return AZA_SUCCESS;
@@ -296,6 +308,19 @@ int main(int argumentCount, char** argumentValues) {
 			/* .gainInput  = */ 24.0f,
 			/* .gainOutput = */-6.0f,
 		}, outputChannelCount);
+
+		std::vector<azaDelayDynamicChannelConfig> channelDelays(outputChannelCount, azaDelayDynamicChannelConfig{
+			/* .delay = */ 500.0f,
+		});
+		delayDynamic = azaMakeDelayDynamic(azaDelayDynamicConfig{
+			/* .gain       = */ 0.0f,
+			/* .gainDry    = */-INFINITY,
+			/* .delayMax   = */ 1000.0f,
+			/* .feedback   = */ 0.8f,
+			/* .pingpong   = */ 0.0f,
+			/* .wetEffects = */ (azaDSP*)delayWetFilter,
+			/* .kernel     = */ nullptr,
+		}, outputChannelCount, outputChannelCount, channelDelays.data());
 
 		azaStreamSetActive(&streamInput, 1);
 		azaStreamSetActive(&streamOutput, 1);

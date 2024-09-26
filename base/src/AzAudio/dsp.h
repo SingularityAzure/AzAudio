@@ -259,6 +259,7 @@ typedef enum azaDSPKind {
 	AZA_DSP_REVERB,
 	AZA_DSP_SAMPLER,
 	AZA_DSP_GATE,
+	AZA_DSP_DELAY_DYNAMIC,
 } azaDSPKind;
 
 // Generic interface to all the DSP structures
@@ -417,12 +418,16 @@ typedef struct azaDelayConfig {
 	azaDSP *wetEffects;
 } azaDelayConfig;
 
+typedef struct azaDelayChannelConfig {
+	// extra delay time in ms
+	float delay;
+} azaDelayChannelConfig;
+
 typedef struct azaDelayChannelData {
 	float *buffer;
 	uint32_t delaySamples;
 	uint32_t index;
-	// extra delay time in ms
-	float delay;
+	azaDelayChannelConfig config;
 } azaDelayChannelData;
 
 typedef struct azaDelay {
@@ -437,7 +442,7 @@ azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline);
 void azaFreeDelay(azaDelay *data);
 int azaProcessDelay(azaBuffer buffer, azaDelay *data);
 // Call this for each channel individually
-azaDelayChannelData* azaDelayGetChannelData(azaDelay *data, uint8_t channel);
+azaDelayChannelConfig* azaDelayGetChannelConfig(azaDelay *data, uint8_t channel);
 
 
 
@@ -514,6 +519,55 @@ int azaProcessGate(azaBuffer buffer, azaGate *data);
 
 
 
+typedef struct azaDelayDynamicConfig {
+	// effect gain in dB
+	float gain;
+	// dry gain in dB
+	float gainDry;
+	// max possible delay in ms
+	// If you increase this it will grow the buffer, filling the empty space with zeroes
+	float delayMax;
+	// 0 to 1 multiple of output feeding back into input
+	float feedback;
+	// How much of one channel's signal gets added to a different channel in the range 0 to 1
+	float pingpong;
+	// You can provide a chain of effects to operate on the wet input
+	azaDSP *wetEffects;
+	// Resampling kernel. If NULL it will use azaKernelDefaultLanczos
+	struct azaKernel *kernel;
+} azaDelayDynamicConfig;
+
+typedef struct azaDelayDynamicChannelConfig {
+	// delay in ms
+	float delay;
+} azaDelayDynamicChannelConfig;
+
+typedef struct azaDelayDynamicChannelData {
+	float *buffer;
+	// Calculate this when processing
+	// float delaySamples;
+	// float index;
+	azaDelayDynamicChannelConfig config;
+} azaDelayDynamicChannelData;
+
+typedef struct azaDelayDynamic {
+	azaDSP header;
+	azaDelayDynamicConfig config;
+	// Combined big buffer that gets split for each channel
+	float *buffer;
+	uint32_t bufferCap;
+	azaDSPChannelData channelData;
+} azaDelayDynamic;
+// channelConfigs can be NULL, which indicates for them to be zeroed out
+azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t channelCapInline, uint8_t channelCount, azaDelayDynamicChannelConfig *channelConfigs);
+void azaFreeDelayDynamic(azaDelayDynamic *data);
+// if endChannelDelays is not NULL, then over the length of the buffer each channel's delay will lerp towards its respective endChannelDelay, and finally set the value in the channel config once it's done processing.
+int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays);
+// Call this for each channel individually
+azaDelayDynamicChannelConfig* azaDelayDynamicGetChannelConfig(azaDelayDynamic *data, uint8_t channel);
+
+
+
 typedef struct azaKernel {
 	// if this is 1, we only store half of the actual table
 	int isSymmetrical;
@@ -525,6 +579,8 @@ typedef struct azaKernel {
 	uint32_t size;
 	float *table;
 } azaKernel;
+
+extern azaKernel azaKernelDefaultLanczos;
 
 // Creates a blank kernel
 void azaKernelInit(azaKernel *kernel, int isSymmetrical, float length, float scale);

@@ -62,7 +62,13 @@ float aza_db_to_ampf(float db);
 
 float aza_amp_to_dbf(float amp);
 
-size_t aza_ms_to_samples(float ms, float samplerate);
+static inline float aza_ms_to_samples(float ms, float samplerate) {
+	return ms * samplerate * 0.001f;
+}
+
+static inline float aza_samples_to_ms(float samples, float samplerate) {
+	return samples / samplerate * 1000.0f;
+}
 
 size_t aza_align(size_t size, size_t alignment);
 
@@ -76,8 +82,6 @@ size_t aza_grow(size_t size, size_t minSize, size_t alignment);
 #define AZA_MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define AZA_CLAMP(a, min, max) AZA_MAX(min, AZA_MIN(max, a))
-
-#define AZA_SAMPLES_TO_MS(samples, samplerate) ((float)(samples) / (float)(samplerate) * 1000.0f)
 
 // Returns the 32-bit signed integer representation of a 24-bit integer stored in the lower 24 bits of a u32. You don't have to worry about what's in the high 8 bits as they'll be masked out.
 int32_t signExtend24Bit(uint32_t value);

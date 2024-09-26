@@ -35,7 +35,7 @@
 	onFail;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
-#define SAFE_FREE(pSomething) if ((pSomething)) { free((pSomething)); (pSomething) = NULL; }
+#define SAFE_FREE(pSomething) if ((pSomething)) { free((void*)(pSomething)); (pSomething) = NULL; }
 
 // Don't forget to free() the return value later.
 static char* wstrToCstr(WCHAR *wstr) {
@@ -608,7 +608,7 @@ static void azaWASAPIDeinit() {
 		SAFE_RELEASE(device[i].pDevice);
 		SAFE_RELEASE(device[i].pPropertyStore);
 		CoTaskMemFree((LPVOID)device[i].idWStr);
-		SAFE_FREE((void*)device[i].name);
+		SAFE_FREE(device[i].name);
 	}
 }
 
@@ -617,7 +617,7 @@ static int azaWASAPIInit() {
 	HRESULT hResult;
 	hResult = CoInitialize(NULL);
 	CHECK_RESULT("CoInitialize", goto error);
-	hResult = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator, &pEnumerator);
+	hResult = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator, (void**)&pEnumerator);
 	CHECK_RESULT("CoCreateInstance", goto error);
 
 	hResult = pEnumerator->lpVtbl->EnumAudioEndpoints(pEnumerator, eAll, DEVICE_STATE_ACTIVE, &pDeviceCollection);
@@ -638,7 +638,7 @@ static int azaWASAPIInit() {
 		// unsigned speakerConfig;
 		WAVEFORMATEXTENSIBLE waveFormatEx;
 		pDeviceCollection->lpVtbl->Item(pDeviceCollection, i, &pDevice);
-		hResult = pDevice->lpVtbl->QueryInterface(pDevice, &IID_IMMEndpoint, &pEndpoint);
+		hResult = pDevice->lpVtbl->QueryInterface(pDevice, &IID_IMMEndpoint, (void**)&pEndpoint);
 		CHECK_RESULT("IMMDevice::QueryInterface(IID_IMMEndpoint)", goto goNext);
 		device[i].pDevice = pDevice;
 		pDevice->lpVtbl->GetId(pDevice, &idWStr);
@@ -704,6 +704,7 @@ static int azaWASAPIInit() {
 				AZA_LOG_INFO("Warning: Device data flow is both capture AND render, which is supposedly impossible.\n");
 				render = capture = 1;
 				break;
+			default: break;
 		}
 		if (render) {
 			deviceOutput[deviceOutputCount++] = device[i];
@@ -798,7 +799,7 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 	data->deviceInfo = deviceInfo;
 #define FAIL_ACTION errCode = AZA_ERROR_BACKEND_ERROR; goto error
 	HRESULT hResult;
-	hResult = deviceInfo->pDevice->lpVtbl->Activate(deviceInfo->pDevice, &IID_IAudioClient, CLSCTX_ALL, NULL, &data->pAudioClient);
+	hResult = deviceInfo->pDevice->lpVtbl->Activate(deviceInfo->pDevice, &IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&data->pAudioClient);
 	CHECK_RESULT("IMMDevice::Activate(IID_IAudioClient)", FAIL_ACTION);
 	// Find out if we natively support our desired format and samplerate, otherwise we have to resample and convert formats
 	hResult = data->pAudioClient->lpVtbl->GetMixFormat(data->pAudioClient, (WAVEFORMATEX**)&defaultFormat);
@@ -867,7 +868,7 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 	CHECK_RESULT("IAudioClient::GetBufferSize", FAIL_ACTION);
 	AZA_LOG_INFO("Buffer has %u frames\n", data->deviceBufferFrames);
 	if (stream->deviceInterface == AZA_OUTPUT) {
-		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioRenderClient, &data->pRenderClient);
+		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioRenderClient, (void**)&data->pRenderClient);
 		CHECK_RESULT("IAudioClient::GetService", FAIL_ACTION);
 		uint8_t *buffer;
 		hResult = data->pRenderClient->lpVtbl->GetBuffer(data->pRenderClient, data->deviceBufferFrames, &buffer);
@@ -876,7 +877,7 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 		hResult = data->pRenderClient->lpVtbl->ReleaseBuffer(data->pRenderClient, data->deviceBufferFrames, 0);
 		CHECK_RESULT("IAudioRenderClient::ReleaseBuffer", FAIL_ACTION);
 	} else {
-		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioCaptureClient, &data->pCaptureClient);
+		hResult = data->pAudioClient->lpVtbl->GetService(data->pAudioClient, &IID_IAudioCaptureClient, (void**)&data->pCaptureClient);
 		CHECK_RESULT("IAudioClient::GetService", FAIL_ACTION);
 	}
 
