@@ -1,6 +1,9 @@
 build*/
+.cache
 .vscode
 *.log
+base/compile_commands.json
+tests/*/compile_commands.json
 
 # don't include generated binaries
 bin/
