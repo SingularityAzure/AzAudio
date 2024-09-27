@@ -7,8 +7,6 @@
 #ifndef AZAUDIO_DSP_H
 #define AZAUDIO_DSP_H
 
-#include <stdlib.h>
-
 #include "header_utils.h"
 #include "math.h"
 
@@ -260,6 +258,7 @@ typedef enum azaDSPKind {
 	AZA_DSP_SAMPLER,
 	AZA_DSP_GATE,
 	AZA_DSP_DELAY_DYNAMIC,
+	AZA_DSP_SPATIALIZE,
 } azaDSPKind;
 
 // Generic interface to all the DSP structures
@@ -617,13 +616,39 @@ typedef struct azaWorld {
 } azaWorld;
 extern azaWorld azaWorldDefault;
 
-// Does simple volume-based spatialization of the source to map it to the channel layout.
+
+
+typedef enum azaSpatializeMode {
+	AZA_SPATIALIZE_SIMPLE,
+	AZA_SPATIALIZE_ADVANCED,
+} azaSpatializeMode;
+
+typedef struct azaSpatializeConfig {
+	// if world is NULL, it will use azaWorldDefault
+	const azaWorld *world;
+	// TODO: We probably want the doppler effect to be separate from what kind of spatialization we want.
+	// AZA_SPATIALIZE_SIMPLE will only do volume-based spatialization
+	// AZA_SPATIALIZE_ADVANCED will also do a per-channel doppler effect, which is ideal for headphones.
+	azaSpatializeMode mode;
+	// Maximum delay time in ms for ADVANCED mode. If this is zero, we'll use some default that should work for most reasonable distances.
+	float delayMax;
+	// In ADVANCED mode, this specifies how far each channel is from the origin in their respective directions. Used to calculate per-channel delays. If this is zero, it will default to 0.085f (half of the average human head width).
+	float earDistance;
+} azaSpatializeConfig;
+
+typedef struct azaSpatialize {
+	azaDSP header;
+	azaSpatializeConfig config;
+	azaDelayDynamic *delay;
+	azaFilter *filter;
+} azaSpatialize;
+azaSpatialize* azaMakeSpatialize(azaSpatializeConfig config, uint8_t channelCapInline);
+void azaFreeSpatialize(azaSpatialize *data);
 // Adds its sound to the existing signal in dstBuffer.
 // dstBuffer and srcBuffer must have the same number of frames and the same samplerate.
 // srcBuffer MUST be 1-channel
-// world can be NULL, indicating to use azaWorldDefault.
 // Doesn't attenuate the volume by distance. You must do that yourself and pass the result into srcAmp.
-void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world);
+int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd);
 
 
 

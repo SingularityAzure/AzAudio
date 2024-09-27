@@ -34,14 +34,12 @@ float linc(float x);
 // sinc with a hann window with a total size of 1+2*radius
 float lanczos(float x, float radius);
 
-float clampf(float a, float min, float max);
-
 static inline float lerp(float a, float b, float t) {
 	return a + (b - a) * t;
 }
 
 static inline float linstepf(float a, float min, float max) {
-	return clampf((a - min) / (max - min), 0.0f, 1.0f);
+	return azaClampf((a - min) / (max - min), 0.0f, 1.0f);
 }
 
 // Like a % max except the answer is always in the range [0; max) even if the input is negative

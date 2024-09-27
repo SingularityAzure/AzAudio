@@ -5,6 +5,7 @@
 
 #include "dsp.h"
 
+#include "AzAudio/math.h"
 #include "error.h"
 #include "helpers.h"
 
@@ -59,6 +60,12 @@ static azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t 
 	}
 	sideBuffersInUse++;
 	return *buffer;
+}
+
+static azaBuffer azaPushSideBufferZero(uint32_t frames, uint32_t channels, uint32_t samplerate) {
+	azaBuffer buffer = azaPushSideBuffer(frames, channels, samplerate);
+	memset(buffer.samples, 0, sizeof(float) * frames * channels);
+	return buffer;
 }
 
 static azaBuffer azaPushSideBufferCopy(azaBuffer src) {
@@ -519,7 +526,7 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 			uint32_t s = i * buffer.stride + c;
 			channelData->valBuffer[data->index] = buffer.samples[s];
 			index = (index+1)%AZAUDIO_LOOKAHEAD_SAMPLES;
-			float out = clampf(channelData->valBuffer[data->index] * gainBuffer.samples[i], -1.0f, 1.0f);
+			float out = azaClampf(channelData->valBuffer[data->index] * gainBuffer.samples[i], -1.0f, 1.0f);
 			buffer.samples[s] = out * amountOutput;
 		}
 	}
@@ -557,14 +564,14 @@ int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
 		if (err) return err;
 	}
 	azaEnsureChannels(&data->channelData, buffer.channels.count);
-	float amount = clampf(1.0f - data->config.dryMix, 0.0f, 1.0f);
-	float amountDry = clampf(data->config.dryMix, 0.0f, 1.0f);
+	float amount = azaClampf(1.0f - data->config.dryMix, 0.0f, 1.0f);
+	float amountDry = azaClampf(data->config.dryMix, 0.0f, 1.0f);
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
 		azaFilterChannelData *channelData = azaGetChannelData(&data->channelData, c);
 
 		switch (data->config.kind) {
 			case AZA_FILTER_HIGH_PASS: {
-				float decay = clampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				float decay = azaClampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (uint32_t i = 0; i < buffer.frames; i++) {
 					uint32_t s = i * buffer.stride + c;
 					channelData->outputs[0] = buffer.samples[s] + decay * (channelData->outputs[0] - buffer.samples[s]);
@@ -572,7 +579,7 @@ int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
 				}
 			} break;
 			case AZA_FILTER_LOW_PASS: {
-				float decay = clampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				float decay = azaClampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (uint32_t i = 0; i < buffer.frames; i++) {
 					uint32_t s = i * buffer.stride + c;
 					channelData->outputs[0] = buffer.samples[s] + decay * (channelData->outputs[0] - buffer.samples[s]);
@@ -580,8 +587,8 @@ int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
 				}
 			} break;
 			case AZA_FILTER_BAND_PASS: {
-				float decayLow = clampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
-				float decayHigh = clampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				float decayLow = azaClampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
+				float decayHigh = azaClampf(expf(-AZA_TAU * (data->config.frequency / (float)buffer.samplerate)), 0.0f, 1.0f);
 				for (uint32_t i = 0; i < buffer.frames; i++) {
 					uint32_t s = i * buffer.stride + c;
 					channelData->outputs[0] = buffer.samples[s] + decayLow * (channelData->outputs[0] - buffer.samples[s]);
@@ -1183,6 +1190,9 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 		if (endChannelDelays) {
 			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
 		}
+		startIndex = azaClampf(startIndex, 0.0f, (float)delaySamplesMax);
+		endIndex = azaClampf(endIndex, 0.0f, (float)delaySamplesMax);
+		if (startIndex >= endIndex) continue;
 		uint8_t c2 = (c + 1) % buffer.channels.count;
 		for (uint32_t i = 0; i < buffer.frames; i++) {
 			float index = lerp(startIndex, endIndex, (float)i / (float)buffer.frames);
@@ -1204,8 +1214,11 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
 			channelData->config.delay = endChannelDelays[c];
 		}
+		startIndex = azaClampf(startIndex, 0.0f, (float)delaySamplesMax);
+		endIndex = azaClampf(endIndex, 0.0f, (float)delaySamplesMax);
 		float amount = aza_db_to_ampf(data->config.gain);
 		float amountDry = aza_db_to_ampf(data->config.gainDry);
+		if (startIndex >= endIndex) amount = 0.0f;
 		for (uint32_t i = 0; i < buffer.frames; i++) {
 			float index = lerp(startIndex, endIndex, (float)i / (float)buffer.frames);
 			uint32_t s = i * buffer.stride + c;
@@ -1291,8 +1304,9 @@ void azaResampleAdd(azaKernel *kernel, float factor, float amp, float *dst, int 
 }
 
 #define PRINT_CHANNEL_AMPS 0
+#define PRINT_CHANNEL_DELAYS 0
 
-#if PRINT_CHANNEL_AMPS
+#if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS
 static int repeatCount = 0;
 #endif
 
@@ -1319,90 +1333,54 @@ int compareChannelMetadataChannel(const void *_lhs, const void *_rhs) {
 };
 
 
-void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd, const azaWorld *world) {
-	assert(dstBuffer.channels.count <= AZA_MAX_CHANNEL_POSITIONS);
-	assert(dstBuffer.samplerate == srcBuffer.samplerate);
-	assert(dstBuffer.frames == srcBuffer.frames);
-	assert(srcBuffer.channels.count == 1);
-	if (dstBuffer.channels.count == 1) {
-		// Nothing to do but put it in there I guess
-		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, srcBuffer, srcAmpStart, srcAmpEnd);
-		return;
-	}
-	if (dstBuffer.channels.count == 0) {
-		// What are we even doing
-		return;
-	}
-	if (world == NULL) {
-		world = &azaWorldDefault;
-	}
-	// Transform srcPos to headspace
-	srcPosStart = azaMulVec3Mat3(azaSubVec3(srcPosStart, world->origin), world->orientation);
-	srcPosEnd = azaMulVec3Mat3(azaSubVec3(srcPosEnd, world->origin), world->orientation);
-	// How much of the signal to add to all channels in case srcPos is crossing close to the head
-	float allChannelAddAmpStart = 0.0f;
-	float allChannelAddAmpEnd = 0.0f;
-	float normStart, normEnd;
-	{
-		normStart = azaVec3Norm(srcPosStart);
-		if (normStart < 0.5f) {
-			allChannelAddAmpStart = (0.5f - normStart) * 2.0f;
-		} else {
-			srcPosStart = azaDivVec3Scalar(srcPosStart, normStart);
-		}
-		normEnd = azaVec3Norm(srcPosEnd);
-		if (normEnd < 0.5f) {
-			allChannelAddAmpEnd = (0.5f - normEnd) * 2.0f;
-		} else {
-			srcPosEnd = azaDivVec3Scalar(srcPosEnd, normEnd);
-		}
-	}
-
-	// Gather some metadata about the channel layout
-	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, hasAerial = 0;
-	uint8_t subChannel;
-	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
-		switch (dstBuffer.channels.positions[i]) {
+static void azaGatherChannelPresenseMetadata(azaChannelLayout channelLayout, uint8_t *hasFront, uint8_t *hasMidFront, uint8_t *hasSub, uint8_t *hasBack, uint8_t *hasSide, uint8_t *hasAerials, uint8_t *subChannel) {
+	for (uint8_t i = 0; i < channelLayout.count; i++) {
+		switch (channelLayout.positions[i]) {
 			case AZA_POS_LEFT_FRONT:
 			case AZA_POS_CENTER_FRONT:
 			case AZA_POS_RIGHT_FRONT:
-				hasFront = 1;
+				*hasFront = 1;
 				break;
 			case AZA_POS_LEFT_CENTER_FRONT:
 			case AZA_POS_RIGHT_CENTER_FRONT:
-				hasMidFront = 1;
+				*hasMidFront = 1;
 				break;
 			case AZA_POS_SUBWOOFER:
-				hasSub = 1;
-				subChannel = i;
+				*hasSub = 1;
+				*subChannel = i;
 				break;
 			case AZA_POS_LEFT_BACK:
 			case AZA_POS_CENTER_BACK:
 			case AZA_POS_RIGHT_BACK:
-				hasBack = 1;
+				*hasBack = 1;
 				break;
 			case AZA_POS_LEFT_SIDE:
 			case AZA_POS_RIGHT_SIDE:
-				hasSide = 1;
+				*hasSide = 1;
 				break;
 			case AZA_POS_CENTER_TOP:
-				hasAerial = 1;
+				*hasAerials = 1;
 				break;
 			case AZA_POS_LEFT_FRONT_TOP:
 			case AZA_POS_CENTER_FRONT_TOP:
 			case AZA_POS_RIGHT_FRONT_TOP:
-				hasFront = 1;
-				hasAerial = 1;
+				*hasFront = 1;
+				*hasAerials = 1;
 				break;
 			case AZA_POS_LEFT_BACK_TOP:
 			case AZA_POS_CENTER_BACK_TOP:
 			case AZA_POS_RIGHT_BACK_TOP:
-				hasBack = 1;
-				hasAerial = 1;
+				*hasBack = 1;
+				*hasAerials = 1;
 				break;
 		}
 	}
-	uint8_t nonSubChannels = hasSub ? dstBuffer.channels.count-1 : dstBuffer.channels.count;
+}
+
+static void azaGetChannelMetadata(azaChannelLayout channelLayout, azaVec3 *dstVectors, uint8_t *nonSubChannels, uint8_t *hasAerials) {
+	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, subChannel = 0;
+	azaGatherChannelPresenseMetadata(channelLayout, &hasFront, &hasMidFront, &hasSub, &hasBack, &hasSide, hasAerials, &subChannel);
+	*nonSubChannels = hasSub ? channelLayout.count-1 : channelLayout.count;
 	// Angles are relative to front center, to be signed later
 	// These relate to anglePhi above
 	float angleFront = AZA_DEG_TO_RAD(75.0f), angleMidFront = AZA_DEG_TO_RAD(30.0f), angleSide = AZA_DEG_TO_RAD(90.0f), angleBack = AZA_DEG_TO_RAD(130.0f);
@@ -1432,6 +1410,162 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPo
 		angleSide = AZA_DEG_TO_RAD(90.0f);
 		angleBack = AZA_DEG_TO_RAD(120.0f);
 	}
+	for (uint8_t i = 0; i < channelLayout.count; i++) {
+		switch (channelLayout.positions[i]) {
+			case AZA_POS_LEFT_FRONT:
+				dstVectors[i] = (azaVec3) { sinf(-angleFront), 0.0f, cosf(-angleFront) };
+				break;
+			case AZA_POS_CENTER_FRONT:
+				dstVectors[i] = (azaVec3) { 0.0f, 0.0f, 1.0f };
+				break;
+			case AZA_POS_RIGHT_FRONT:
+				dstVectors[i] = (azaVec3) { sinf(angleFront), 0.0f, cosf(angleFront) };
+				break;
+			case AZA_POS_LEFT_CENTER_FRONT:
+				dstVectors[i] = (azaVec3) { sinf(-angleMidFront), 0.0f, cosf(-angleMidFront) };
+				break;
+			case AZA_POS_RIGHT_CENTER_FRONT:
+				dstVectors[i] = (azaVec3) { sinf(angleMidFront), 0.0f, cosf(angleMidFront) };
+				break;
+			case AZA_POS_LEFT_BACK:
+				dstVectors[i] = (azaVec3) { sinf(-angleBack), 0.0f, cosf(-angleBack) };
+				break;
+			case AZA_POS_CENTER_BACK:
+				dstVectors[i] = (azaVec3) { 0.0f, 0.0f, -1.0f };
+				break;
+			case AZA_POS_RIGHT_BACK:
+				dstVectors[i] = (azaVec3) { sinf(angleBack), 0.0f, cosf(angleBack) };
+				break;
+			case AZA_POS_LEFT_SIDE:
+				dstVectors[i] = (azaVec3) { sinf(-angleSide), 0.0f, cosf(-angleSide) };
+				break;
+			case AZA_POS_RIGHT_SIDE:
+				dstVectors[i] = (azaVec3) { sinf(angleSide), 0.0f, cosf(angleSide) };
+				break;
+			case AZA_POS_CENTER_TOP:
+				dstVectors[i] = (azaVec3) { 0.0f, 1.0f, 0.0f };
+				break;
+			case AZA_POS_LEFT_FRONT_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { sinf(-angleFront), 1.0f, cosf(-angleFront) });
+				break;
+			case AZA_POS_CENTER_FRONT_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, 1.0f });
+				break;
+			case AZA_POS_RIGHT_FRONT_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { sinf(angleFront), 1.0f, cosf(angleFront) });
+				break;
+			case AZA_POS_LEFT_BACK_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { sinf(-angleBack), 1.0f, cosf(-angleBack) });
+				break;
+			case AZA_POS_CENTER_BACK_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, -1.0f });
+				break;
+			case AZA_POS_RIGHT_BACK_TOP:
+				dstVectors[i] = azaVec3Normalized((azaVec3) { sinf(angleBack), 1.0f, cosf(angleBack) });
+				break;
+			default: // This includes AZA_POS_SUBWOOFER
+				continue;
+		}
+	}
+}
+
+azaSpatialize* azaMakeSpatialize(azaSpatializeConfig config, uint8_t channelCapInline) {
+	uint32_t size = sizeof(azaSpatialize);
+	azaSpatialize *result = calloc(1, size);
+	result->header.kind = AZA_DSP_SPATIALIZE;
+	result->header.structSize = size;
+	result->config = config;
+	result->delay = azaMakeDelayDynamic((azaDelayDynamicConfig){
+		.gain = 0.0f,
+		.gainDry = -INFINITY,
+		.delayMax = config.delayMax != 0.0f ? config.delayMax : 500.0f,
+		.feedback = 0.0f,
+		.pingpong = 0.0f,
+		.wetEffects = NULL,
+		.kernel = NULL,
+	}, channelCapInline, channelCapInline, NULL);
+	result->filter = azaMakeFilter((azaFilterConfig){
+		.kind = AZA_FILTER_LOW_PASS,
+		.dryMix = 0.8f,
+		.frequency = 15000.0f,
+	}, channelCapInline);
+	return result;
+}
+
+void azaFreeSpatialize(azaSpatialize *data) {
+	if (data->delay) {
+		azaFreeDelayDynamic(data->delay);
+	}
+	if (data->filter) {
+		azaFreeFilter(data->filter);
+	}
+	free(data);
+}
+
+int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd) {
+	int err = AZA_SUCCESS;
+	assert(dstBuffer.channels.count <= AZA_MAX_CHANNEL_POSITIONS);
+	assert(dstBuffer.samplerate == srcBuffer.samplerate);
+	assert(dstBuffer.frames == srcBuffer.frames);
+	assert(srcBuffer.channels.count == 1);
+	if (dstBuffer.channels.count == 0) {
+		// What are we even doing
+		return AZA_SUCCESS;
+	}
+	const azaWorld *world = data->config.world;
+	if (world == NULL) {
+		world = &azaWorldDefault;
+	}
+	// Transform srcPos to headspace
+	srcPosStart = azaMulVec3Mat3(azaSubVec3(srcPosStart, world->origin), world->orientation);
+	srcPosEnd = azaMulVec3Mat3(azaSubVec3(srcPosEnd, world->origin), world->orientation);
+	azaVec3 srcNormalStart;
+	azaVec3 srcNormalEnd;
+
+	azaBuffer sideBuffer = azaPushSideBufferZero(dstBuffer.frames, dstBuffer.channels.count, dstBuffer.samplerate);
+	float delayStart = azaVec3Norm(srcPosStart) / world->speedOfSound * 1000.0f;
+	float delayEnd = azaVec3Norm(srcPosEnd) / world->speedOfSound * 1000.0f;
+	if (dstBuffer.channels.count == 1) {
+		// Nothing to do but put it in there I guess
+		if (data->config.mode == AZA_SPATIALIZE_ADVANCED) {
+			// Gotta do the doppler
+			azaEnsureChannels(&data->delay->channelData, 1);
+			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(data->delay, 0);
+			channelConfig->delay = delayStart;
+			azaProcessDelayDynamic(sideBuffer, data->delay, &delayEnd);
+			data->filter->config.frequency = lerp(24000.0f, 10000.0f, delayStart / 25.0f);
+			azaProcessFilter(sideBuffer, data->filter);
+		}
+		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, sideBuffer, srcAmpStart, srcAmpEnd);
+		azaPopSideBuffer();
+		return AZA_SUCCESS;
+	}
+	// How much of the signal to add to all channels in case srcPos is crossing close to the head
+	float allChannelAddAmpStart = 0.0f;
+	float allChannelAddAmpEnd = 0.0f;
+	float normStart, normEnd;
+	{
+		normStart = azaVec3Norm(srcPosStart);
+		if (normStart < 0.5f) {
+			allChannelAddAmpStart = (0.5f - normStart) * 2.0f;
+			srcNormalStart = srcPosStart;
+		} else {
+			srcNormalStart = azaDivVec3Scalar(srcPosStart, normStart);
+		}
+		normEnd = azaVec3Norm(srcPosEnd);
+		if (normEnd < 0.5f) {
+			allChannelAddAmpEnd = (0.5f - normEnd) * 2.0f;
+			srcNormalEnd = srcPosEnd;
+		} else {
+			srcNormalEnd = azaDivVec3Scalar(srcPosEnd, normEnd);
+		}
+	}
+
+	uint8_t nonSubChannels, hasAerials;
+	azaVec3 channelVectors[AZA_MAX_CHANNEL_POSITIONS];
+	azaGetChannelMetadata(dstBuffer.channels, channelVectors, &nonSubChannels, &hasAerials);
+	float channelDelayStart[AZA_MAX_CHANNEL_POSITIONS];
+	float channelDelayEnd[AZA_MAX_CHANNEL_POSITIONS];
 
 	// Position our channel vectors
 	struct channelMetadata channelsStart[AZA_MAX_CHANNEL_POSITIONS];
@@ -1440,69 +1574,25 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPo
 	memset(channelsEnd, 0, sizeof(channelsEnd));
 	float totalMagnitudeStart = 0.0f;
 	float totalMagnitudeEnd = 0.0f;
+	float earDistance = data->config.earDistance;
+	if (earDistance == 0.0f) {
+		earDistance = 0.085f;
+	}
 	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
-		azaVec3 channelVector;
 		channelsStart[i].channel = i;
 		channelsEnd[i].channel = i;
-		switch (dstBuffer.channels.positions[i]) {
-			case AZA_POS_LEFT_FRONT:
-				channelVector = (azaVec3) { sinf(-angleFront), 0.0f, cosf(-angleFront) };
-				break;
-			case AZA_POS_CENTER_FRONT:
-				channelVector = (azaVec3) { 0.0f, 0.0f, 1.0f };
-				break;
-			case AZA_POS_RIGHT_FRONT:
-				channelVector = (azaVec3) { sinf(angleFront), 0.0f, cosf(angleFront) };
-				break;
-			case AZA_POS_LEFT_CENTER_FRONT:
-				channelVector = (azaVec3) { sinf(-angleMidFront), 0.0f, cosf(-angleMidFront) };
-				break;
-			case AZA_POS_RIGHT_CENTER_FRONT:
-				channelVector = (azaVec3) { sinf(angleMidFront), 0.0f, cosf(angleMidFront) };
-				break;
-			case AZA_POS_LEFT_BACK:
-				channelVector = (azaVec3) { sinf(-angleBack), 0.0f, cosf(-angleBack) };
-				break;
-			case AZA_POS_CENTER_BACK:
-				channelVector = (azaVec3) { 0.0f, 0.0f, -1.0f };
-				break;
-			case AZA_POS_RIGHT_BACK:
-				channelVector = (azaVec3) { sinf(angleBack), 0.0f, cosf(angleBack) };
-				break;
-			case AZA_POS_LEFT_SIDE:
-				channelVector = (azaVec3) { sinf(-angleSide), 0.0f, cosf(-angleSide) };
-				break;
-			case AZA_POS_RIGHT_SIDE:
-				channelVector = (azaVec3) { sinf(angleSide), 0.0f, cosf(angleSide) };
-				break;
-			case AZA_POS_CENTER_TOP:
-				channelVector = (azaVec3) { 0.0f, 1.0f, 0.0f };
-				break;
-			case AZA_POS_LEFT_FRONT_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { sinf(-angleFront), 1.0f, cosf(-angleFront) });
-				break;
-			case AZA_POS_CENTER_FRONT_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, 1.0f });
-				break;
-			case AZA_POS_RIGHT_FRONT_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { sinf(angleFront), 1.0f, cosf(angleFront) });
-				break;
-			case AZA_POS_LEFT_BACK_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { sinf(-angleBack), 1.0f, cosf(-angleBack) });
-				break;
-			case AZA_POS_CENTER_BACK_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { 0.0f, 1.0f, -1.0f });
-				break;
-			case AZA_POS_RIGHT_BACK_TOP:
-				channelVector = azaVec3Normalized((azaVec3) { sinf(angleBack), 1.0f, cosf(angleBack) });
-				break;
-			default: // This includes AZA_POS_SUBWOOFER
-				continue;
+		channelsStart[i].amp = 0.5f * normStart + 0.5f * azaVec3Dot(channelVectors[i], srcNormalStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		channelsEnd[i].amp = 0.5f * normEnd + 0.5f * azaVec3Dot(channelVectors[i], srcNormalEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+		azaVec3 earPos = azaMulVec3Scalar(channelVectors[i], earDistance);
+		if (data->config.mode == AZA_SPATIALIZE_ADVANCED) {
+			channelDelayStart[i] = azaVec3Norm(azaSubVec3(srcPosStart, earPos)) / world->speedOfSound * 1000.0f;
+			channelDelayEnd[i] = azaVec3Norm(azaSubVec3(srcPosEnd, earPos)) / world->speedOfSound * 1000.0f;
+		} else {
+			channelDelayStart[i] = delayStart;
+			channelDelayEnd[i] = delayEnd;
 		}
-		channelsStart[i].amp = 0.5f * normStart + 0.5f * azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
-		channelsEnd[i].amp = 0.5f * normEnd + 0.5f * azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
-		// channelsStart[i].amp = azaVec3Dot(channelVector, srcPosStart) + allChannelAddAmpStart / (float)nonSubChannels;
-		// channelsEnd[i].amp = azaVec3Dot(channelVector, srcPosEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
+		// channelsStart[i].amp = azaVec3Dot(channelVectors[i], srcNormalStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		// channelsEnd[i].amp = azaVec3Dot(channelVectors[i], srcNormalEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
 		// if (channelsStart[i].amp < 0.0f) channelsStart[i].amp = 0.0f;
 		// if (channelsEnd[i].amp < 0.0f) channelsEnd[i].amp = 0.0f;
 		// channelsStart[i].amp = 0.25f + 0.75f * channelsStart[i].amp;
@@ -1511,9 +1601,11 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPo
 		totalMagnitudeEnd += channelsEnd[i].amp;
 	}
 
+	float minAmp = data->config.mode == AZA_SPATIALIZE_SIMPLE ? 0.0f : 0.7f;
+
 	if (dstBuffer.channels.count > 2) {
 		int minChannel = 2;
-		if (dstBuffer.channels.count > 3 && hasAerial) {
+		if (dstBuffer.channels.count > 3 && hasAerials) {
 			// TODO: This probably isn't a reliable way to use aerials. Probably do something smarter.
 			minChannel = 3;
 		}
@@ -1539,29 +1631,48 @@ void azaSpatializeSimple(azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPo
 		qsort(channelsEnd, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataChannel);
 	}
 
-	azaBuffer dst = dstBuffer;
+	azaBuffer dst = sideBuffer;
 	dst.channels.count = 1;
-#if PRINT_CHANNEL_AMPS
+#if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS
 	if (repeatCount == 0) {
 		AZA_LOG_INFO("\n");
 	}
 #endif
-	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
-		dst.samples = dstBuffer.samples + i;
+	for (uint8_t c = 0; c < sideBuffer.channels.count; c++) {
+		dst.samples = sideBuffer.samples + c;
 		float ampStart = srcAmpStart;
 		float ampEnd = srcAmpEnd;
-		if (dstBuffer.channels.positions[i] != AZA_POS_SUBWOOFER) {
-			ampStart *= channelsStart[i].amp / totalMagnitudeStart;
-			ampEnd *= channelsEnd[i].amp / totalMagnitudeEnd;
+		if (dstBuffer.channels.positions[c] != AZA_POS_SUBWOOFER) {
+			ampStart *= (channelsStart[c].amp / totalMagnitudeStart) * (1.0f - minAmp) + minAmp;
+			ampEnd *= (channelsEnd[c].amp / totalMagnitudeEnd) * (1.0f - minAmp) + minAmp;
 		}
 #if PRINT_CHANNEL_AMPS
 		if (repeatCount == 0) {
-			AZA_LOG_INFO("Channel %u amp: %f\n", (uint32_t)i, ampStart);
+			AZA_LOG_INFO("Channel %u amp: %f\n", (uint32_t)c, ampStart);
+		}
+#endif
+#if PRINT_CHANNEL_DELAYS
+		if (repeatCount == 0) {
+			AZA_LOG_INFO("Channel %u delay: %f\n", (uint32_t)c, channelDelayStart[c]);
 		}
 #endif
 		azaBufferMixFade(dst, 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
 	}
-#if PRINT_CHANNEL_AMPS
+	if (data->config.mode == AZA_SPATIALIZE_ADVANCED) {
+		// Gotta do the doppler
+		azaEnsureChannels(&data->delay->channelData, sideBuffer.channels.count);
+		for (uint8_t c = 0; c < sideBuffer.channels.count; c++) {
+			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(data->delay, c);
+			channelConfig->delay = channelDelayStart[c];
+		}
+		azaProcessDelayDynamic(sideBuffer, data->delay, channelDelayEnd);
+		// data->filter->config.frequency = lerp(24000.0f, 5000.0f, delayStart / 25.0f);
+		// azaProcessFilter(sideBuffer, data->filter);
+	}
+	azaBufferMix(dstBuffer, 1.0f, sideBuffer, 1.0f);
+#if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS
 	repeatCount = (repeatCount + 1) % 50;
 #endif
+	azaPopSideBuffer();
+	return err;
 }

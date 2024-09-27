@@ -59,6 +59,7 @@ azaGate *gate = nullptr;
 azaFilter *gateBandPass = nullptr;
 azaFilter *delayWetFilter = nullptr;
 azaDelayDynamic *delayDynamic = nullptr;
+azaSpatialize *spatialize = nullptr;
 
 std::vector<float> micBuffer;
 size_t lastMicBufferSize=0;
@@ -120,20 +121,23 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	srcBuffer.samplerate = buffer.samplerate;
 	srcBuffer.samples = processingBuffer;
 	srcBuffer.stride = 1;
+	// float distance = (0.5f + 0.5f * sin(angle2)) * 100.0f;
 	azaVec3 srcPosStart = {
-		sin(angle),
-		cos(angle),
+		sin(angle) * 100.0f,
+		10.0f,
 		0.0f,
 		// 0.0f,
 	};
-	// angle += (float)buffer.frames / (float)buffer.samplerate;
-	angle2 += ((float)buffer.frames / (float)buffer.samplerate) * AZA_TAU * 0.125f;
+	angle += ((float)buffer.frames / (float)buffer.samplerate) * AZA_TAU * 0.05f;
+	// angle2 += ((float)buffer.frames / (float)buffer.samplerate) * AZA_TAU * 1.0f;
 	if (angle > AZA_TAU) {
 		angle -= AZA_TAU;
 	}
+	// distance = (0.5f + 0.5f * sin(angle2)) * 100.0f;
 	azaVec3 srcPosEnd = {
-		sin(angle),
-		cos(angle),
+		sin(angle) * 100.0f,
+		10.0f,
+		// cos(angle) * distance,
 		0.0f,
 		// 0.0f,
 	};
@@ -141,15 +145,19 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		return err;
 	}
 	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
-	azaSpatializeSimple(buffer, srcBuffer, srcPosStart, 1.0f, srcPosEnd, 1.0f, nullptr);
+	float volumeStart = azaClampf(10.0f / azaVec3Norm(srcPosStart), 0.0f, 1.0f);
+	float volumeEnd = azaClampf(10.0f / azaVec3Norm(srcPosEnd), 0.0f, 1.0f);
+	if ((err = azaProcessSpatialize(spatialize, buffer, srcBuffer, srcPosStart, volumeStart, srcPosEnd, volumeEnd))) {
+		return err;
+	}
 	// printf("gate gain: %f\n", gate->gain);
 	endChannelDelays.resize(buffer.channels.count);
 	for (float &delay : endChannelDelays) {
 		delay = 600.0f + sinf(angle2) * 400.0f;
 	}
-	if ((err = azaProcessDelayDynamic(buffer, delayDynamic, endChannelDelays.data()))) {
-		return err;
-	}
+	// if ((err = azaProcessDelayDynamic(buffer, delayDynamic, endChannelDelays.data()))) {
+	// 	return err;
+	// }
 	// if ((err = azaProcessDelay(buffer, delay))) {
 	// 	return err;
 	// }
@@ -159,9 +167,9 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	// if ((err = azaProcessDelay(buffer, delay3))) {
 	// 	return err;
 	// }
-	// if ((err = azaProcessReverb(buffer, reverb))) {
-	// 	return err;
-	// }
+	if ((err = azaProcessReverb(buffer, reverb))) {
+		return err;
+	}
 	if ((err = azaProcessFilter(buffer, highPass))) {
 		return err;
 	}
@@ -322,6 +330,13 @@ int main(int argumentCount, char** argumentValues) {
 			/* .kernel     = */ nullptr,
 		}, outputChannelCount, outputChannelCount, channelDelays.data());
 
+		spatialize = azaMakeSpatialize(azaSpatializeConfig{
+			/* .world       = */ nullptr,
+			/* .mode        = */ AZA_SPATIALIZE_ADVANCED,
+			/* .delayMax    = */ 0.0f,
+			/* .earDistance = */ 0.0f,
+		}, outputChannelCount);
+
 		azaStreamSetActive(&streamInput, 1);
 		azaStreamSetActive(&streamOutput, 1);
 		std::cout << "Press ENTER to stop" << std::endl;
@@ -339,6 +354,8 @@ int main(int argumentCount, char** argumentValues) {
 		azaFreeGate(gate);
 		azaFreeFilter(gateBandPass);
 		azaFreeFilter(delayWetFilter);
+		azaFreeDelayDynamic(delayDynamic);
+		azaFreeSpatialize(spatialize);
 
 		azaDeinit();
 	} catch (std::runtime_error& e) {

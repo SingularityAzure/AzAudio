@@ -29,6 +29,11 @@ static inline float azaSqr(float a) {
 	return a * a;
 }
 
+static inline float azaClampf(float a, float min, float max) {
+	return a < min ? min : (a > max ? max : a);
+}
+
+
 typedef union azaVec3 {
 	struct {
 		float x, y, z;
