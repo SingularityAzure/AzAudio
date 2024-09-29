@@ -463,7 +463,7 @@ static int azaStreamInitPipewire(azaStream *stream) {
 	struct azaNodeInfo *deviceNodePool = NULL;
 	size_t deviceNodeCount = 0;
 
-	azaStreamData *data = calloc(sizeof(azaStreamData), 1);
+	azaStreamData *data = aza_calloc(sizeof(azaStreamData), 1);
 	data->stream_events.version = PW_VERSION_STREAM_EVENTS;
 	data->stream_events.process = azaStreamProcess;
 	fp_pw_thread_loop_lock(loop);
@@ -595,7 +595,7 @@ static void azaStreamDeinitPipewire(azaStream *stream) {
 	fp_pw_stream_disconnect(data->stream);
 	fp_pw_stream_destroy(data->stream);
 	fp_pw_thread_loop_unlock(loop);
-	free(data);
+	aza_free(data);
 }
 
 static size_t azaGetDeviceCountPipewire(azaDeviceInterface interface) {

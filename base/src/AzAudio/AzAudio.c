@@ -23,6 +23,8 @@ fp_azaLogCallback azaLog = azaLogDefault;
 
 AzaLogLevel azaLogLevel = AZA_LOG_LEVEL_INFO;
 
+azaAllocatorCallbacks azaAllocator = {0};
+
 int azaInit() {
 	char levelStr[64];
 	size_t levelLen = 0;
@@ -40,6 +42,12 @@ int azaInit() {
 		}
 	}
 	AZA_LOG_INFO("AzAudio Version: " AZA_VERSION_FORMAT_STR "\n", AZA_VERSION_ARGS);
+
+	if (azaAllocator.fp_calloc == NULL) {
+		azaAllocator.fp_calloc = calloc;
+		azaAllocator.fp_malloc = malloc;
+		azaAllocator.fp_free = free;
+	}
 
 	azaKernelMakeLanczos(&azaKernelDefaultLanczos, 128.0f, 50.0f);
 

@@ -35,13 +35,13 @@
 	onFail;\
 }
 #define SAFE_RELEASE(pSomething) if ((pSomething)) { (pSomething)->lpVtbl->Release((pSomething)); (pSomething) = NULL; }
-#define SAFE_FREE(pSomething) if ((pSomething)) { free((void*)(pSomething)); (pSomething) = NULL; }
+#define SAFE_FREE(pSomething) if ((pSomething)) { aza_free((void*)(pSomething)); (pSomething) = NULL; }
 
-// Don't forget to free() the return value later.
+// Don't forget to aza_free() the return value later.
 static char* wstrToCstr(WCHAR *wstr) {
 	char *cstr;
 	int neededSize = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
-	cstr = malloc(neededSize);
+	cstr = aza_malloc(neededSize);
 	WideCharToMultiByte(CP_UTF8, 0, wstr, -1, cstr, neededSize, NULL, NULL);
 	return cstr;
 }
@@ -714,7 +714,7 @@ static int azaWASAPIInit() {
 		if (azaLogLevel >= AZA_LOG_LEVEL_TRACE) {
 			char *idCStr = wstrToCstr(idWStr);
 			AZA_LOG_TRACE("Device %u:\n\tidStr: \"%s\"\n\tname: \"%s\"\n\tchannels: %u\n\tbitDepth: %u\n\tsamplerate: %zu\n\tspeakerConfig: 0x%x\n", i, idCStr, name, device[i].channels, device[i].sampleBitDepth, device[i].samplerate, device[i].speakerConfig);
-			free(idCStr);
+			aza_free(idCStr);
 		}
 		continue;
 goNext:
@@ -885,10 +885,10 @@ static int azaStreamInitWASAPI(azaStream *stream) {
 
 	if (!exactFormat) {
 		data->processingBuffer.frames = GetResampledFramecount(data->processingBuffer.samplerate, data->waveFormatExtensible.Format.nSamplesPerSec, data->deviceBufferFrames);
-		data->nativeBuffer.samples = calloc((data->deviceBufferFrames + AZA_RESAMPLING_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
+		data->nativeBuffer.samples = aza_calloc((data->deviceBufferFrames + AZA_RESAMPLING_WINDOW*2) * data->waveFormatExtensible.Format.nChannels, sizeof(float));
 		data->nativeBufferStart = data->nativeBuffer.samples + (AZA_RESAMPLING_WINDOW * 2) * data->waveFormatExtensible.Format.nChannels;
 		data->nativeBuffer.channels = azaGetChannelLayoutFromMask((uint8_t)data->waveFormatExtensible.Format.nChannels, data->waveFormatExtensible.dwChannelMask);
-		data->processingBuffer.samples = calloc((data->processingBuffer.frames + AZA_RESAMPLING_WINDOW*2) * data->processingBuffer.channels.count, sizeof(float));
+		data->processingBuffer.samples = aza_calloc((data->processingBuffer.frames + AZA_RESAMPLING_WINDOW*2) * data->processingBuffer.channels.count, sizeof(float));
 		data->processingBufferStart = data->processingBuffer.samples + (AZA_RESAMPLING_WINDOW * 2) * data->processingBuffer.channels.count;
 		data->processingBuffer.channels = azaChannelLayoutStandardFromCount(data->processingBuffer.channels.count);
 	} else {

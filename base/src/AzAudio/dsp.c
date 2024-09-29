@@ -114,14 +114,14 @@ int azaBufferInit(azaBuffer *data) {
 		data->samples = NULL;
 		return AZA_ERROR_INVALID_FRAME_COUNT;
 	}
-	data->samples = (float*)malloc(sizeof(float) * data->frames * data->channels.count);
+	data->samples = (float*)aza_calloc(data->frames * data->channels.count, sizeof(float));
 	data->stride = data->channels.count;
 	return AZA_SUCCESS;
 }
 
 int azaBufferDeinit(azaBuffer *data) {
 	if (data->samples != NULL) {
-		free(data->samples);
+		aza_free(data->samples);
 		return AZA_SUCCESS;
 	}
 	return AZA_ERROR_NULL_POINTER;
@@ -283,7 +283,7 @@ static void azaDSPChannelDataInit(azaDSPChannelData *data, uint8_t channelCapInl
 
 static void azaDSPChannelDataDeinit(azaDSPChannelData *data) {
 	if (data->additional) {
-		free(data->additional);
+		aza_free(data->additional);
 		data->additional = NULL;
 	}
 	data->capAdditional = 0;
@@ -293,10 +293,10 @@ static void azaEnsureChannels(azaDSPChannelData *data, uint8_t channelCount) {
 	if (channelCount > data->capInline) {
 		uint8_t channelCountAdditional = channelCount - data->capInline;
 		if (channelCountAdditional > data->capAdditional) {
-			void *newData = calloc(channelCountAdditional, data->size);
+			void *newData = aza_calloc(channelCountAdditional, data->size);
 			if (data->additional) {
 				memcpy(newData, data->additional, data->capAdditional * data->size);
-				free(data->additional);
+				aza_free(data->additional);
 			}
 			data->additional = newData;
 			data->capAdditional = channelCountAdditional;
@@ -330,7 +330,7 @@ azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline) {
 	if (bufferCapNeeded <= AZA_RMS_INLINE_BUFFER_SIZE) {
 		size += AZA_RMS_INLINE_BUFFER_SIZE * sizeof(float);
 	}
-	azaRMS *result = calloc(1, size);
+	azaRMS *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_RMS;
 	result->header.structSize = size;
 	result->config = config;
@@ -338,7 +338,7 @@ azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline) {
 
 	result->bufferCap = bufferCapNeeded;
 	if (result->bufferCap > AZA_RMS_INLINE_BUFFER_SIZE) {
-		result->buffer = calloc(result->bufferCap, sizeof(float));
+		result->buffer = aza_calloc(result->bufferCap, sizeof(float));
 	} else {
 		result->buffer = (float*)((char*)&result->buffer + sizeof(float*) + sizeof(azaDSPChannelData) + channelCapInline * sizeof(azaRMSChannelData));
 	}
@@ -348,17 +348,17 @@ azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline) {
 void azaFreeRMS(azaRMS *data) {
 	azaDSPChannelDataDeinit(&data->channelData);
 	if (data->bufferCap > AZA_RMS_INLINE_BUFFER_SIZE) {
-		free(data->buffer);
+		aza_free(data->buffer);
 	}
-	free(data);
+	aza_free(data);
 }
 
 static void azaHandleRMSBuffer(azaRMS *data, uint8_t channels) {
 	if (data->bufferCap < data->config.windowSamples * channels) {
 		uint32_t newBufferCap = (uint32_t)aza_grow(data->bufferCap, data->config.windowSamples * channels, 32);
-		float *newBuffer = calloc(newBufferCap, sizeof(float));
+		float *newBuffer = aza_calloc(newBufferCap, sizeof(float));
 		if (data->bufferCap > AZA_RMS_INLINE_BUFFER_SIZE) {
-			free(data->buffer);
+			aza_free(data->buffer);
 		}
 		data->bufferCap = newBufferCap;
 		data->buffer = newBuffer;
@@ -465,7 +465,7 @@ int azaProcessCubicLimiter(azaBuffer buffer) {
 
 azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, uint8_t channelCapInline) {
 	uint32_t size = sizeof(azaLookaheadLimiter) + channelCapInline * sizeof(azaLookaheadLimiterChannelData);
-	azaLookaheadLimiter *result = calloc(1, size);
+	azaLookaheadLimiter *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_LOOKAHEAD_LIMITER;
 	result->header.structSize = size;
 	result->config = config;
@@ -475,7 +475,7 @@ azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, u
 
 void azaFreeLookaheadLimiter(azaLookaheadLimiter *data) {
 	azaDSPChannelDataDeinit(&data->channelData);
-	free(data);
+	aza_free(data);
 }
 
 // TODO: This implementation is NOT functioning correctly (and it was that way before the refactor too). It clips hard instead of always leaving room for the waveform... It does do some kind of "softening" of the clipping, but we're taking a latency penalty so we should get the full benefit!
@@ -553,7 +553,7 @@ azaFilter* azaMakeFilter(azaFilterConfig config, uint8_t channelCapInline) {
 
 void azaFreeFilter(azaFilter *data) {
 	azaDSPChannelDataDeinit(&data->channelData);
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
@@ -609,7 +609,7 @@ int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
 
 azaCompressor* azaMakeCompressor(azaCompressorConfig config) {
 	uint32_t size = sizeof(azaCompressor);
-	azaCompressor *result = calloc(1, size);
+	azaCompressor *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_COMPRESSOR;
 	result->header.structSize = size;
 	result->config = config;
@@ -619,7 +619,7 @@ azaCompressor* azaMakeCompressor(azaCompressorConfig config) {
 
 void azaFreeCompressor(azaCompressor *data) {
 	azaFreeRMS(data->rms);
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessCompressor(azaBuffer buffer, azaCompressor *data) {
@@ -700,7 +700,7 @@ static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uin
 	if (!realloc) return;
 	// Have to realloc buffer
 	uint32_t newPerChannelBufferCap = (uint32_t)aza_grow(data->bufferCap / channelCount, delaySamplesMax, 256);
-	float *newBuffer = calloc(sizeof(float), newPerChannelBufferCap * channelCount);
+	float *newBuffer = aza_calloc(sizeof(float), newPerChannelBufferCap * channelCount);
 	for (uint8_t c = 0; c < channelCount; c++) {
 		azaDelayChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		float *newChannelBuffer = newBuffer + c * newPerChannelBufferCap;
@@ -712,14 +712,14 @@ static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uin
 		channelData->delaySamples = (uint32_t)aza_ms_to_samples(data->config.delay + channelData->config.delay, (float)samplerate);
 	}
 	if (data->buffer) {
-		free(data->buffer);
+		aza_free(data->buffer);
 	}
 	data->buffer = newBuffer;
 }
 
 azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline) {
 	uint32_t size = sizeof(azaDelay) + channelCapInline * sizeof(azaDelayChannelData);
-	azaDelay *result = calloc(1, size);
+	azaDelay *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_DELAY;
 	result->header.structSize = size;
 	result->config = config;
@@ -729,9 +729,9 @@ azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline) {
 
 void azaFreeDelay(azaDelay *data) {
 	if (data->buffer) {
-		free(data->buffer);
+		aza_free(data->buffer);
 	}
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
@@ -784,7 +784,7 @@ int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
 
 azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline) {
 	uint32_t size = sizeof(azaReverb);
-	azaReverb *result = calloc(1, size);
+	azaReverb *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_REVERB;
 	result->header.structSize = size;
 	result->config = config;
@@ -853,7 +853,7 @@ void azaFreeReverb(azaReverb *data) {
 		azaFreeDelay(data->delays[i]);
 		azaFreeFilter(data->filters[i]);
 	}
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
@@ -903,7 +903,7 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 
 azaSampler* azaMakeSampler(azaSamplerConfig config) {
 	uint32_t size = sizeof(azaSampler);
-	azaSampler *result = calloc(1, size);
+	azaSampler *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_SAMPLER;
 	result->header.structSize = size;
 	result->config = config;
@@ -915,7 +915,7 @@ azaSampler* azaMakeSampler(azaSamplerConfig config) {
 }
 
 void azaFreeSampler(azaSampler *data) {
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
@@ -995,7 +995,7 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 
 azaGate* azaMakeGate(azaGateConfig config) {
 	uint32_t size = sizeof(azaGate);
-	azaGate *result = calloc(1, size);
+	azaGate *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_GATE;
 	result->header.structSize = size;
 	result->config = config;
@@ -1005,7 +1005,7 @@ azaGate* azaMakeGate(azaGateConfig config) {
 
 void azaFreeGate(azaGate *data) {
 	azaFreeRMS(data->rms);
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessGate(azaBuffer buffer, azaGate *data) {
@@ -1084,7 +1084,7 @@ static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer 
 	if (perChannelBufferCap >= totalSamplesNeeded) return;
 	// Have to realloc buffer
 	uint32_t newPerChannelBufferCap = (uint32_t)aza_grow(perChannelBufferCap, totalSamplesNeeded, 256);
-	float *newBuffer = calloc(sizeof(float), newPerChannelBufferCap * src.channels.count);
+	float *newBuffer = aza_calloc(sizeof(float), newPerChannelBufferCap * src.channels.count);
 	for (uint8_t c = 0; c < src.channels.count; c++) {
 		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		float *newChannelBuffer = newBuffer + c * newPerChannelBufferCap;
@@ -1096,7 +1096,7 @@ static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer 
 		// channelData->delaySamples = aza_ms_to_samples(channelData->config.delay, (float)samplerate);
 	}
 	if (data->buffer) {
-		free(data->buffer);
+		aza_free(data->buffer);
 	}
 	data->buffer = newBuffer;
 	data->bufferCap = newPerChannelBufferCap * src.channels.count;
@@ -1128,7 +1128,7 @@ static void azaDelayDynamicPrimeBuffer(azaDelayDynamic *data, azaBuffer src) {
 
 azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t channelCapInline, uint8_t channelCount, azaDelayDynamicChannelConfig *channelConfigs) {
 	uint32_t size = sizeof(azaDelayDynamic) + channelCapInline * sizeof(azaDelayDynamicChannelData);
-	azaDelayDynamic *result = calloc(1, size);
+	azaDelayDynamic *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_DELAY_DYNAMIC;
 	result->header.structSize = size;
 	result->config = config;
@@ -1145,9 +1145,9 @@ azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t chann
 
 void azaFreeDelayDynamic(azaDelayDynamic *data) {
 	if (data->buffer) {
-		free(data->buffer);
+		aza_free(data->buffer);
 	}
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays) {
@@ -1243,11 +1243,11 @@ void azaKernelInit(azaKernel *kernel, int isSymmetrical, float length, float sca
 	kernel->length = length;
 	kernel->scale = scale;
 	kernel->size = (uint32_t)ceilf(length * scale);
-	kernel->table = calloc(kernel->size, sizeof(float));
+	kernel->table = aza_calloc(kernel->size, sizeof(float));
 }
 
 void azaKernelDeinit(azaKernel *kernel) {
-	free(kernel->table);
+	aza_free(kernel->table);
 }
 
 float azaKernelSample(azaKernel *kernel, float x) {
@@ -1472,7 +1472,7 @@ static void azaGetChannelMetadata(azaChannelLayout channelLayout, azaVec3 *dstVe
 
 azaSpatialize* azaMakeSpatialize(azaSpatializeConfig config, uint8_t channelCapInline) {
 	uint32_t size = sizeof(azaSpatialize);
-	azaSpatialize *result = calloc(1, size);
+	azaSpatialize *result = aza_calloc(1, size);
 	result->header.kind = AZA_DSP_SPATIALIZE;
 	result->header.structSize = size;
 	result->config = config;
@@ -1500,7 +1500,7 @@ void azaFreeSpatialize(azaSpatialize *data) {
 	if (data->filter) {
 		azaFreeFilter(data->filter);
 	}
-	free(data);
+	aza_free(data);
 }
 
 int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd) {

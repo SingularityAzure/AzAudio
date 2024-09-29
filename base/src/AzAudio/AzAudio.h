@@ -30,6 +30,25 @@ typedef enum AzaLogLevel {
 } AzaLogLevel;
 extern AzaLogLevel azaLogLevel;
 
+typedef struct azaAllocatorCallbacks {
+	// returns zero-initialized memory aligned to at least an 8-byte boundary
+	void* (*fp_calloc)(size_t count, size_t size);
+	// returns uninitialized memory aligned to at least an 8-byte boundary
+	void* (*fp_malloc)(size_t size);
+	// frees a block of memory that had been previously returned from fp_calloc
+	void (*fp_free)(void *block);
+} azaAllocatorCallbacks;
+extern azaAllocatorCallbacks azaAllocator;
+static inline void* aza_calloc(size_t count, size_t size) {
+	return azaAllocator.fp_calloc(count, size);
+}
+static inline void* aza_malloc(size_t size) {
+	return azaAllocator.fp_malloc(size);
+}
+static inline void aza_free(void *block) {
+	azaAllocator.fp_free(block);
+}
+
 // Defaults in case querying the devices doesn't work.
 
 #ifndef AZA_SAMPLERATE_DEFAULT
