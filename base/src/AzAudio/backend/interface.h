@@ -57,7 +57,7 @@ extern fp_azaStreamGetActive azaStreamGetActive;
 typedef const char* (*fp_azaStreamGetDeviceName)(azaStream *stream);
 extern fp_azaStreamGetDeviceName azaStreamGetDeviceName;
 
-typedef size_t (*fp_azaStreamGetSamplerate)(azaStream *stream);
+typedef uint32_t (*fp_azaStreamGetSamplerate)(azaStream *stream);
 extern fp_azaStreamGetSamplerate azaStreamGetSamplerate;
 
 typedef azaChannelLayout (*fp_azaStreamGetChannelLayout)(azaStream *stream);

@@ -1078,7 +1078,7 @@ static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer 
 	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
 	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
 	kernelSamples = 0;
-	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)src.samplerate) + kernelSamples;
+	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)src.samplerate)) + kernelSamples;
 	uint32_t totalSamplesNeeded = delaySamplesMax + src.frames;
 	uint32_t perChannelBufferCap = data->bufferCap / src.channels.count;
 	if (perChannelBufferCap >= totalSamplesNeeded) return;
@@ -1108,7 +1108,7 @@ static void azaDelayDynamicPrimeBuffer(azaDelayDynamic *data, azaBuffer src) {
 	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
 	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
 	kernelSamples = 0;
-	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)src.samplerate) + kernelSamples;
+	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)src.samplerate)) + kernelSamples;
 	for (uint8_t c = 0; c < src.channels.count; c++) {
 		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		// Move existing buffer back to make room for new buffer data
@@ -1182,7 +1182,7 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 	// }
 	kernelSamplesLeft = 0;
 	kernelSamplesRight = 0;
-	uint32_t delaySamplesMax = aza_ms_to_samples(data->config.delayMax, (float)buffer.samplerate);
+	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)buffer.samplerate));
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
 		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		float startIndex = (float)delaySamplesMax - aza_ms_to_samples(channelData->config.delay, (float)buffer.samplerate);
@@ -1379,6 +1379,7 @@ static void azaGatherChannelPresenseMetadata(azaChannelLayout channelLayout, uin
 
 static void azaGetChannelMetadata(azaChannelLayout channelLayout, azaVec3 *dstVectors, uint8_t *nonSubChannels, uint8_t *hasAerials) {
 	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, subChannel = 0;
+	hasAerials = 0;
 	azaGatherChannelPresenseMetadata(channelLayout, &hasFront, &hasMidFront, &hasSub, &hasBack, &hasSide, hasAerials, &subChannel);
 	*nonSubChannels = hasSub ? channelLayout.count-1 : channelLayout.count;
 	// Angles are relative to front center, to be signed later

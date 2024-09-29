@@ -165,7 +165,7 @@ static const char* azaStreamGetDeviceNameWASAPI(azaStream *stream) {
 	return data->deviceInfo->name;
 }
 
-static size_t azaStreamGetSamplerateWASAPI(azaStream *stream) {
+static uint32_t azaStreamGetSamplerateWASAPI(azaStream *stream) {
 	azaStreamData *data = stream->data;
 	return data->processingBuffer.samplerate;
 }
@@ -243,7 +243,7 @@ static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCoun
 	HRESULT hResult;
 	IMMDevice *pDevice;
 	IPropertyStore *pPropertyStore;
-	char *name;
+	char *name = NULL;
 	hResult = pEnumerator->lpVtbl->GetDefaultAudioEndpoint(pEnumerator, dataFlow, eConsole, &pDevice);
 	CHECK_RESULT("GetDefaultAudioEndpoint", FAIL_ACTION);
 	hResult = pDevice->lpVtbl->OpenPropertyStore(pDevice, STGM_READ, &pPropertyStore);
@@ -318,7 +318,6 @@ static void azaMixChannelsResampled(azaKernel *kernel, float factor, float *dst,
 }
 
 static void azaStreamConvertFromNative(azaStreamData *data, uint32_t numFramesNative, uint32_t numFrames) {
-	azaStream *stream = data->stream;
 	// First, populate nativeBuffer, doing any type conversions necessary
 	// NOTE: We're leaving 2*AZA_RESAMPLING_WINDOW space at the beginning, allowing us to process the incoming data with exactly enough latency for resampling to occur with no artifacts. This block will have been copied from the end of the last chunk.
 	if (IsEqualGUID(&data->waveFormatExtensible.SubFormat, &KSDATAFORMAT_SUBTYPE_PCM)) {

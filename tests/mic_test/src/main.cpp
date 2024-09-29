@@ -4,12 +4,16 @@
 	Simple test program for our library
 */
 
+#if defined(_MSC_VER)
+	#define _CRT_USE_CONFORMING_ANNEX_K_TIME 1
+#endif
+#include <ctime>
+
 #include <iostream>
 #include <vector>
 
 #include <cstdarg>
 
-#include "AzAudio/dsp.h"
 #include "log.hpp"
 #include "AzAudio/AzAudio.h"
 #include "AzAudio/error.h"
@@ -39,11 +43,12 @@ void logCallback(AzaLogLevel level, const char* format, ...) {
 	if (level > azaLogLevel) return;
 	char buffer[1024];
 	time_t now = time(nullptr);
-	strftime(buffer, sizeof(buffer), "%T", localtime(&now));
+	struct tm timeBuffer;
+	strftime(buffer, sizeof(buffer), "%T", localtime_s(&now, &timeBuffer));
 	sys::cout << "AzAudio[" << buffer << "] ";
 	va_list args;
 	va_start(args, format);
-	vsprintf(buffer, format, args);
+	vsnprintf(buffer, 1024, format, args);
 	va_end(args);
 	sys::cout << buffer;
 }

@@ -47,7 +47,7 @@ float cosc(float x) {
 
 float linc(float x) {
 	if (x > 1.0f || x < -1.0f)
-	return 0.0f;
+		return 0.0f;
 	if (x > 0)
 		return 1.0f - x;
 	else

@@ -9,10 +9,14 @@
 #include "helpers.h"
 #include "backend/interface.h"
 
-#include <assert.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
+
+#if defined(_MSC_VER)
+	// Michaelsoft will not be spared my wrath at the end of days
+	#define _CRT_USE_CONFORMING_ANNEX_K_TIME 1
+#endif
 #include <time.h>
 
 fp_azaLogCallback azaLog = azaLogDefault;
@@ -20,17 +24,18 @@ fp_azaLogCallback azaLog = azaLogDefault;
 AzaLogLevel azaLogLevel = AZA_LOG_LEVEL_INFO;
 
 int azaInit() {
-	const char *envLogLevel = getenv("AZAUDIO_LOG_LEVEL");
-	if (envLogLevel) {
-		char level[64];
-		azaStrToLower(level, sizeof(level), envLogLevel);
-		if (strncmp(level, "none", sizeof(level)) == 0) {
+	char levelStr[64];
+	size_t levelLen = 0;
+	errno_t hasLogLevel = getenv_s(&levelLen, levelStr, 64, "AZAUDIO_LOG_LEVEL");
+	if (0 == hasLogLevel && levelLen <= sizeof(levelStr)) {
+		azaStrToLower(levelStr, sizeof(levelStr), levelStr);
+		if (strncmp(levelStr, "none", sizeof(levelStr)) == 0) {
 			azaLogLevel = AZA_LOG_LEVEL_NONE;
-		} else if (strncmp(level, "error", sizeof(level)) == 0) {
+		} else if (strncmp(levelStr, "error", sizeof(levelStr)) == 0) {
 			azaLogLevel = AZA_LOG_LEVEL_ERROR;
-		} else if (strncmp(level, "info", sizeof(level)) == 0) {
+		} else if (strncmp(levelStr, "info", sizeof(levelStr)) == 0) {
 			azaLogLevel = AZA_LOG_LEVEL_INFO;
-		} else if (strncmp(level, "trace", sizeof(level)) == 0) {
+		} else if (strncmp(levelStr, "trace", sizeof(levelStr)) == 0) {
 			azaLogLevel = AZA_LOG_LEVEL_TRACE;
 		}
 	}
@@ -54,7 +59,8 @@ void azaLogDefault(AzaLogLevel level, const char* format, ...) {
 	if (level > azaLogLevel) return;
 	FILE *file = level == AZA_LOG_LEVEL_ERROR ? stderr : stdout;
 	char timeStr[64];
-	strftime(timeStr, sizeof(timeStr), "%T", localtime(&(time_t){time(NULL)}));
+	struct tm timeBuffer;
+	strftime(timeStr, sizeof(timeStr), "%T", localtime_s(&(time_t){time(NULL)}, &timeBuffer));
 	fprintf(file, "AzAudio[%s] ", timeStr);
 	va_list args;
 	va_start(args, format);
