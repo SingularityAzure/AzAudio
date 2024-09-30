@@ -315,7 +315,7 @@ int main(int argumentCount, char** argumentValues) {
 			/* .ratio     = */ 10.0f,
 			/* .attack    = */ 100.0f,
 			/* .decay     = */ 200.0f,
-		});
+		}, outputChannelCount);
 
 		limiter = azaMakeLookaheadLimiter(azaLookaheadLimiterConfig{
 			/* .gainInput  = */ 24.0f,

@@ -921,6 +921,8 @@ static void azaStreamDeinitWASAPI(azaStream *stream) {
 	SAFE_RELEASE(data->pAudioClient);
 	SAFE_RELEASE(data->pRenderClient);
 	azaStreamDataFree(data);
+	data->isInUse = AZA_FALSE;
+	data->isActive = AZA_FALSE;
 	azaMutexUnlock(&mutex);
 }
 

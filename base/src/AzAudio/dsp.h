@@ -69,6 +69,14 @@ typedef struct azaChannelLayout {
 	uint8_t positions[AZA_MAX_CHANNEL_POSITIONS];
 } azaChannelLayout;
 
+static inline azaChannelLayout azaChannelLayoutOneChannel(azaChannelLayout src, uint8_t channel) {
+	return AZA_CLITERAL(azaChannelLayout) {
+		/* .count      = */ 1,
+		/* .formFactor = */ src.formFactor,
+		/* .positions  = */ {src.positions[channel]},
+	};
+}
+
 // Some standard layouts, for your convenience
 
 static inline azaChannelLayout azaChannelLayoutMono() {
@@ -245,6 +253,17 @@ static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 	};
 }
 
+static inline azaBuffer azaBufferOneChannel(azaBuffer src, uint8_t channel) {
+	return AZA_CLITERAL(azaBuffer) {
+		/* .samples    = */ src.samples + channel,
+		/* .samplerate = */ src.samplerate,
+		/* .frames     = */ src.frames,
+		/* .stride     = */ src.stride,
+		// TODO: We probably need to extract the correct channel position.
+		/* .channels   = */ azaChannelLayoutOneChannel(src.channels, channel),
+	};
+}
+
 
 
 typedef enum azaDSPKind {
@@ -307,8 +326,19 @@ typedef struct azaRMS {
 	azaDSPChannelData channelData;
 	// float inlineBuffer[256]; // optional
 } azaRMS;
+
+// returns the size in bytes of azaRMS with the given channelCapInline
+uint32_t azaRMSGetAllocSize(azaRMSConfig config, uint8_t channelCapInline);
+// initializes azaRMS in existing memory
+void azaRMSInit(azaRMS *data, uint32_t allocSize, azaRMSConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaRMS may have allocated
+void azaRMSDeinit(azaRMS *data);
+
+// Convenience function that allocates and inits an azaRMS for you
 azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline);
+// Frees an azaRMS that was created with azaMakeRMS
 void azaFreeRMS(azaRMS *data);
+
 // Takes the rms of all the channels combined with op and puts that into the first channel of dst
 int azaProcessRMSCombined(azaBuffer dst, azaBuffer src, azaRMS *data, fp_azaOp op);
 int azaProcessRMS(azaBuffer buffer, azaRMS *data);
@@ -342,8 +372,19 @@ typedef struct azaLookaheadLimiter {
 
 	azaDSPChannelData channelData;
 } azaLookaheadLimiter;
+
+// returns the size in bytes of azaLookaheadLimiter with the given channelCapInline
+uint32_t azaLookaheadLimiterGetAllocSize(uint8_t channelCapInline);
+// initializes azaLookaheadLimiter in existing memory
+void azaLookaheadLimiterInit(azaLookaheadLimiter *data, uint32_t allocSize, azaLookaheadLimiterConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaLookaheadLimiter may have allocated
+void azaLookaheadLimiterDeinit(azaLookaheadLimiter *data);
+
+// Convenience function that allocates and inits an azaLookaheadLimiter for you
 azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, uint8_t channelCapInline);
+// Frees an azaLookaheadLimiter that was created with azaMakeLookaheadLimiter
 void azaFreeLookaheadLimiter(azaLookaheadLimiter *data);
+
 int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data);
 
 
@@ -371,8 +412,18 @@ typedef struct azaFilter {
 	azaFilterConfig config;
 	azaDSPChannelData channelData;
 } azaFilter;
+// returns the size in bytes of a filter with the given channelCapInline
+uint32_t azaFilterGetAllocSize(uint8_t channelCapInline);
+// initializes azaFilter in existing memory
+void azaFilterInit(azaFilter *data, uint32_t allocSize, azaFilterConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaFilter may have allocated
+void azaFilterDeinit(azaFilter *data);
+
+// Convenience function that allocates and inits an azaFilter for you
 azaFilter* azaMakeFilter(azaFilterConfig config, uint8_t channelCapInline);
+// Frees an azaFilter that was created with azaMakeFilter
 void azaFreeFilter(azaFilter *data);
+
 int azaProcessFilter(azaBuffer buffer, azaFilter *data);
 
 
@@ -392,12 +443,23 @@ typedef struct azaCompressorConfig {
 typedef struct azaCompressor {
 	azaDSP header;
 	azaCompressorConfig config;
-	azaRMS *rms;
 	float attenuation;
 	float gain; // For monitoring/debugging
+	azaRMS rms;
 } azaCompressor;
-azaCompressor* azaMakeCompressor(azaCompressorConfig config);
+
+// returns the size in bytes of azaCompressor with the given channelCapInline
+uint32_t azaCompressorGetAllocSize(uint8_t channelCapInline);
+// initializes azaCompressor in existing memory
+void azaCompressorInit(azaCompressor *data, uint32_t allocSize, azaCompressorConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaCompressor may have allocated
+void azaCompressorDeinit(azaCompressor *data);
+
+// Convenience function that allocates and inits an azaCompressor for you
+azaCompressor* azaMakeCompressor(azaCompressorConfig config, uint8_t channelCapInline);
+// Frees an azaCompressor that was created with azaMakeCompressor
 void azaFreeCompressor(azaCompressor *data);
+
 int azaProcessCompressor(azaBuffer buffer, azaCompressor *data);
 
 
@@ -437,11 +499,23 @@ typedef struct azaDelay {
 	uint32_t bufferCap;
 	azaDSPChannelData channelData;
 } azaDelay;
-azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline);
-void azaFreeDelay(azaDelay *data);
-int azaProcessDelay(azaBuffer buffer, azaDelay *data);
-// Call this for each channel individually
+
+// returns the size in bytes of azaDelay with the given channelCapInline
+uint32_t azaDelayGetAllocSize(uint8_t channelCapInline);
+// initializes azaDelay in existing memory
+void azaDelayInit(azaDelay *data, uint32_t allocSize, azaDelayConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaDelay may have allocated
+void azaDelayDeinit(azaDelay *data);
+
+// Call this for each channel individually as they may not be contiguous in memory
 azaDelayChannelConfig* azaDelayGetChannelConfig(azaDelay *data, uint8_t channel);
+
+// Convenience function that allocates and inits an azaDelay for you
+azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline);
+// Frees an azaDelay that was created with azaMakeDelay
+void azaFreeDelay(azaDelay *data);
+
+int azaProcessDelay(azaBuffer buffer, azaDelay *data);
 
 
 
@@ -462,12 +536,26 @@ typedef struct azaReverbConfig {
 typedef struct azaReverb {
 	azaDSP header;
 	azaReverbConfig config;
-	azaDelay *inputDelay;
-	azaDelay *delays[AZAUDIO_REVERB_DELAY_COUNT];
-	azaFilter *filters[AZAUDIO_REVERB_DELAY_COUNT];
+	azaDelay inputDelay;
+	// azaDelay delays[AZAUDIO_REVERB_DELAY_COUNT];
+	// azaFilter filters[AZAUDIO_REVERB_DELAY_COUNT];
 } azaReverb;
+
+// returns the size in bytes of azaReverb
+uint32_t azaReverbGetAllocSize(uint8_t channelCapInline);
+// initializes azaReverb in existing memory
+void azaReverbInit(azaReverb *data, uint32_t allocSize, azaReverbConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaReverb may have allocated
+void azaReverbDeinit(azaReverb *data);
+
+azaDelay* azaReverbGetDelayTap(azaReverb *data, int tap);
+azaFilter* azaReverbGetFilterTap(azaReverb *data, int tap);
+
+// Convenience function that allocates and inits an azaReverb for you
 azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline);
+// Frees an azaReverb that was created with azaMakeReverb
 void azaFreeReverb(azaReverb *data);
+
 int azaProcessReverb(azaBuffer buffer, azaReverb *data);
 
 
@@ -488,8 +576,21 @@ typedef struct azaSampler {
 	float s; // Smooth speed
 	float g; // Smooth gain
 } azaSampler;
+
+// returns the size in bytes of azaSampler (included for completeness)
+static inline uint32_t azaSamplerGetAllocSize() {
+	return (uint32_t)sizeof(azaSampler);
+}
+// initializes azaSampler in existing memory
+void azaSamplerInit(azaSampler *data, azaSamplerConfig config);
+// frees any additional memory that the azaSampler may have allocated
+void azaSamplerDeinit(azaSampler *data);
+
+// Convenience function that allocates and inits an azaSampler for you
 azaSampler* azaMakeSampler(azaSamplerConfig config);
+// Frees an azaSampler that was created with azaMakeSampler
 void azaFreeSampler(azaSampler *data);
+
 int azaProcessSampler(azaBuffer buffer, azaSampler *data);
 
 
@@ -508,12 +609,23 @@ typedef struct azaGateConfig {
 typedef struct azaGate {
 	azaDSP header;
 	azaGateConfig config;
-	azaRMS *rms;
 	float attenuation;
 	float gain;
+	azaRMS rms;
 } azaGate;
+
+// returns the size in bytes of azaGate with the given channelCapInline
+uint32_t azaGateGetAllocSize();
+// initializes azaGate in existing memory
+void azaGateInit(azaGate *data, uint32_t allocSize, azaGateConfig config);
+// frees any additional memory that the azaGate may have allocated
+void azaGateDeinit(azaGate *data);
+
+// Convenience function that allocates and inits an azaGate for you
 azaGate* azaMakeGate(azaGateConfig config);
+// Frees an azaGate that was created with azaMakeGate
 void azaFreeGate(azaGate *data);
+
 int azaProcessGate(azaBuffer buffer, azaGate *data);
 
 
@@ -557,13 +669,26 @@ typedef struct azaDelayDynamic {
 	uint32_t bufferCap;
 	azaDSPChannelData channelData;
 } azaDelayDynamic;
+
+// returns the size in bytes of azaDelayDynamic with the given channelCapInline
+uint32_t azaDelayDynamicGetAllocSize(uint8_t channelCapInline);
+// initializes azaDelayDynamic in existing memory
+// channelConfigs can be NULL, which indicates for them to be zeroed out, otherwise expects an array of size channelCount
+void azaDelayDynamicInit(azaDelayDynamic *data, uint32_t allocSize, azaDelayDynamicConfig config, uint8_t channelCapInline, uint8_t channelCount, azaDelayDynamicChannelConfig *channelConfigs);
+// frees any additional memory that the azaDelayDynamic may have allocated
+void azaDelayDynamicDeinit(azaDelayDynamic *data);
+
+// Call this for each channel individually as they may not be contiguous in memory
+azaDelayDynamicChannelConfig* azaDelayDynamicGetChannelConfig(azaDelayDynamic *data, uint8_t channel);
+
+// Convenience function that allocates and inits an azaDelayDynamic for you
 // channelConfigs can be NULL, which indicates for them to be zeroed out
 azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t channelCapInline, uint8_t channelCount, azaDelayDynamicChannelConfig *channelConfigs);
+// Frees an azaDelayDynamic that was created with azaMakeDelayDynamic
 void azaFreeDelayDynamic(azaDelayDynamic *data);
+
 // if endChannelDelays is not NULL, then over the length of the buffer each channel's delay will lerp towards its respective endChannelDelay, and finally set the value in the channel config once it's done processing.
 int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays);
-// Call this for each channel individually
-azaDelayDynamicChannelConfig* azaDelayDynamicGetChannelConfig(azaDelayDynamic *data, uint8_t channel);
 
 
 
@@ -636,14 +761,31 @@ typedef struct azaSpatializeConfig {
 	float earDistance;
 } azaSpatializeConfig;
 
+typedef struct azaSpatializeChannelData {
+	azaFilter filter;
+} azaSpatializeChannelData;
+
 typedef struct azaSpatialize {
 	azaDSP header;
 	azaSpatializeConfig config;
-	azaDelayDynamic *delay;
-	azaFilter *filter;
+	azaDSPChannelData channelData;
+	// azaDelayDynamic delay;
 } azaSpatialize;
+
+// returns the size in bytes of azaSpatialize with the given channelCapInline
+uint32_t azaSpatializeGetAllocSize(uint8_t channelCapInline);
+// initializes azaSpatialize in existing memory
+void azaSpatializeInit(azaSpatialize *data, uint32_t allocSize, azaSpatializeConfig config, uint8_t channelCapInline);
+// frees any additional memory that the azaSpatialize may have allocated
+void azaSpatializeDeinit(azaSpatialize *data);
+
+azaDelayDynamic* azaSpatializeGetDelayDynamic(azaSpatialize *data);
+
+// Convenience function that allocates and inits an azaSpatialize for you
 azaSpatialize* azaMakeSpatialize(azaSpatializeConfig config, uint8_t channelCapInline);
+// Frees an azaSpatialize that was created with azaMakeSpatialize
 void azaFreeSpatialize(azaSpatialize *data);
+
 // Adds its sound to the existing signal in dstBuffer.
 // dstBuffer and srcBuffer must have the same number of frames and the same samplerate.
 // srcBuffer MUST be 1-channel

@@ -9,6 +9,7 @@
 
 #include "AzAudio.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +96,17 @@ int32_t signExtend24Bit(uint32_t value);
 #endif
 
 void azaStrToLower(char *dst, size_t dstSize, const char *src);
+
+// aligns sizeStart to alignment and then adds sizeAdded to it
+// This assumes that sizeAdded is already aligned to alignment
+static inline size_t azaAddSizeWithAlign(size_t sizeStart, size_t sizeAdded, size_t alignment) {
+	assert(sizeAdded == aza_align(sizeAdded, alignment));
+	return aza_align(sizeStart, alignment) + sizeAdded;
+}
+
+static inline char* azaGetBufferOffset(char *buffer, size_t offset, size_t alignment) {
+	return buffer + aza_align(offset, alignment);
+}
 
 #ifdef __cplusplus
 }
