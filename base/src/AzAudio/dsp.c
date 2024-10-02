@@ -1214,9 +1214,9 @@ static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer 
 	// TODO: Probably track channel layouts and handle them changing. Right now the buffers will break if the number of channels changes.
 	azaEnsureChannels(&data->channelData, src.channels.count);
 	uint32_t kernelSamples;
-	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
-	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
-	kernelSamples = 0;
+	azaKernel *kernel = azaDelayDynamicGetKernel(data);
+	kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? (kernel->length - 1.0f) * 2.0f : (kernel->length-1.0f));
+	// kernelSamples = 0;
 	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)src.samplerate)) + kernelSamples;
 	uint32_t totalSamplesNeeded = delaySamplesMax + src.frames;
 	uint32_t perChannelBufferCap = data->bufferCap / src.channels.count;
@@ -1244,9 +1244,9 @@ static void azaDelayDynamicHandleBufferResizes(azaDelayDynamic *data, azaBuffer 
 // Puts new audio data into the buffer for immediate sampling. Assumes azaDelayDynamicHandleBufferResizes was called already.
 static void azaDelayDynamicPrimeBuffer(azaDelayDynamic *data, azaBuffer src) {
 	uint32_t kernelSamples;
-	// azaKernel *kernel = azaDelayDynamicGetKernel(data);
-	// kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? kernel->length * 2.0f : kernel->length);
-	kernelSamples = 0;
+	azaKernel *kernel = azaDelayDynamicGetKernel(data);
+	kernelSamples = (uint32_t)ceilf(kernel->isSymmetrical ? (kernel->length - 1.0f) * 2.0f : (kernel->length-1.0f));
+	// kernelSamples = 0;
 	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)src.samplerate)) + kernelSamples;
 	for (uint8_t c = 0; c < src.channels.count; c++) {
 		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
@@ -1328,33 +1328,33 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 	azaDelayDynamicHandleBufferResizes(data, inputBuffer);
 	// TODO: Verify whether this matters. It was difficult to tell whether there was any problem with not factoring in the kernel (which I suppose would only matter for very close to 0 delay).
 	int kernelSamplesLeft, kernelSamplesRight;
-	// if (kernel->isSymmetrical) {
-	// 	kernelSamplesLeft = (int)ceilf(kernel->length);
-	// 	kernelSamplesRight = (int)ceilf(kernel->length);
-	// } else {
-	// 	kernelSamplesLeft = 0;
-	// 	kernelSamplesRight = (int)ceilf(kernel->length);
-	// }
-	kernelSamplesLeft = 0;
-	kernelSamplesRight = 0;
+	if (kernel->isSymmetrical) {
+		kernelSamplesLeft = (int)ceilf(kernel->length - 1.0f);
+		kernelSamplesRight = (int)ceilf(kernel->length - 1.0f);
+	} else {
+		kernelSamplesLeft = 0;
+		kernelSamplesRight = (int)ceilf(kernel->length - 1.0f);
+	}
+	// kernelSamplesLeft = 0;
+	// kernelSamplesRight = 0;
 	uint32_t delaySamplesMax = (uint32_t)ceilf(aza_ms_to_samples(data->config.delayMax, (float)buffer.samplerate));
-	for (uint8_t c = 0; c < buffer.channels.count; c++) {
+	for (uint8_t c = 0; c < inputBuffer.channels.count; c++) {
 		azaDelayDynamicChannelData *channelData = azaGetChannelData(&data->channelData, c);
-		float startIndex = (float)delaySamplesMax - aza_ms_to_samples(channelData->config.delay, (float)buffer.samplerate);
-		float endIndex = startIndex + (float)buffer.frames;
+		float startIndex = (float)delaySamplesMax - aza_ms_to_samples(channelData->config.delay, (float)inputBuffer.samplerate);
+		float endIndex = startIndex + (float)inputBuffer.frames;
 		if (endChannelDelays) {
-			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
+			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)inputBuffer.samplerate);
 		}
 		startIndex = azaClampf(startIndex, 0.0f, (float)delaySamplesMax);
 		endIndex = azaClampf(endIndex, 0.0f, (float)delaySamplesMax);
 		if (startIndex >= endIndex) continue;
-		uint8_t c2 = (c + 1) % buffer.channels.count;
-		for (uint32_t i = 0; i < buffer.frames; i++) {
-			float index = lerp(startIndex, endIndex, (float)i / (float)buffer.frames);
-			uint32_t s = i * buffer.stride + c;
+		uint8_t c2 = (c + 1) % inputBuffer.channels.count;
+		for (uint32_t i = 0; i < inputBuffer.frames; i++) {
+			float index = lerp(startIndex, endIndex, (float)i / (float)inputBuffer.frames);
+			uint32_t s = i * inputBuffer.stride + c;
 			float toAdd = inputBuffer.samples[s];
 			if (data->config.feedback != 0.0f) {
-			 	toAdd += azaSampleWithKernel(channelData->buffer+kernelSamplesLeft, 1, -kernelSamplesLeft, delaySamplesMax+kernelSamplesRight+buffer.frames, kernel, index) * data->config.feedback;
+			 	toAdd += azaSampleWithKernel(channelData->buffer+kernelSamplesLeft, 1, -kernelSamplesLeft, delaySamplesMax+kernelSamplesRight+inputBuffer.frames, kernel, index) * data->config.feedback;
 			}
 			inputBuffer.samples[i * inputBuffer.stride + c] += toAdd * (1.0f - data->config.pingpong);
 			inputBuffer.samples[i * inputBuffer.stride + c2] += toAdd * data->config.pingpong;
@@ -1369,8 +1369,8 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 			endIndex -= aza_ms_to_samples(endChannelDelays[c] - channelData->config.delay, (float)buffer.samplerate);
 			channelData->config.delay = endChannelDelays[c];
 		}
-		startIndex = azaClampf(startIndex, 0.0f, (float)delaySamplesMax);
-		endIndex = azaClampf(endIndex, 0.0f, (float)delaySamplesMax);
+		startIndex = azaClampf(startIndex, 0.0f, (float)(delaySamplesMax + buffer.frames));
+		endIndex = azaClampf(endIndex, 0.0f, (float)(delaySamplesMax + buffer.frames));
 		float amount = aza_db_to_ampf(data->config.gain);
 		float amountDry = aza_db_to_ampf(data->config.gainDry);
 		if (startIndex >= endIndex) amount = 0.0f;
@@ -1534,7 +1534,7 @@ static void azaGatherChannelPresenseMetadata(azaChannelLayout channelLayout, uin
 
 static void azaGetChannelMetadata(azaChannelLayout channelLayout, azaVec3 *dstVectors, uint8_t *nonSubChannels, uint8_t *hasAerials) {
 	uint8_t hasFront = 0, hasMidFront = 0, hasSub = 0, hasBack = 0, hasSide = 0, subChannel = 0;
-	hasAerials = 0;
+	*hasAerials = 0;
 	azaGatherChannelPresenseMetadata(channelLayout, &hasFront, &hasMidFront, &hasSub, &hasBack, &hasSide, hasAerials, &subChannel);
 	*nonSubChannels = hasSub ? channelLayout.count-1 : channelLayout.count;
 	// Angles are relative to front center, to be signed later
@@ -1646,7 +1646,7 @@ void azaSpatializeInit(azaSpatialize *data, uint32_t allocSize, azaSpatializeCon
 		azaSpatializeChannelData *channelData = azaGetChannelData(&data->channelData, c);
 		azaFilterInit(&channelData->filter, filterAllocSize, (azaFilterConfig) {
 			.kind = AZA_FILTER_LOW_PASS,
-			.dryMix = 0.8f,
+			.dryMix = 0.0f,
 			.frequency = 15000.0f,
 		}, 1);
 	}
@@ -1688,6 +1688,10 @@ void azaFreeSpatialize(azaSpatialize *data) {
 	aza_free(data);
 }
 
+static float azaSpatializeGetFilterCutoff(float delay, float dot) {
+	return 192000.0f / AZA_MAX(delay, 1.0f) * (dot * 0.35f + 0.65f);
+}
+
 int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd) {
 	int err = AZA_SUCCESS;
 	assert(dstBuffer.channels.count <= AZA_MAX_CHANNEL_POSITIONS);
@@ -1722,7 +1726,7 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(delay, 0);
 			channelConfig->delay = delayStart;
 			azaProcessDelayDynamic(sideBuffer, delay, &delayEnd);
-			channelData->filter.config.frequency = lerp(24000.0f, 10000.0f, delayStart / 25.0f);
+			channelData->filter.config.frequency = azaSpatializeGetFilterCutoff(delayStart, 1.0f);
 			azaProcessFilter(sideBuffer, &channelData->filter);
 		}
 		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, sideBuffer, srcAmpStart, srcAmpEnd);
@@ -1755,6 +1759,7 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 	azaGetChannelMetadata(dstBuffer.channels, channelVectors, &nonSubChannels, &hasAerials);
 	float channelDelayStart[AZA_MAX_CHANNEL_POSITIONS];
 	float channelDelayEnd[AZA_MAX_CHANNEL_POSITIONS];
+	float channelDot[AZA_MAX_CHANNEL_POSITIONS];
 
 	// Position our channel vectors
 	struct channelMetadata channelsStart[AZA_MAX_CHANNEL_POSITIONS];
@@ -1770,10 +1775,13 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 	for (uint8_t i = 0; i < dstBuffer.channels.count; i++) {
 		channelsStart[i].channel = i;
 		channelsEnd[i].channel = i;
-		channelsStart[i].amp = 0.5f * normStart + 0.5f * azaVec3Dot(channelVectors[i], srcNormalStart) + allChannelAddAmpStart / (float)nonSubChannels;
+		channelDot[i] = azaVec3Dot(channelVectors[i], srcNormalStart);
+		channelsStart[i].amp = 0.5f * normStart + 0.5f * channelDot[i] + allChannelAddAmpStart / (float)nonSubChannels;
 		channelsEnd[i].amp = 0.5f * normEnd + 0.5f * azaVec3Dot(channelVectors[i], srcNormalEnd) + allChannelAddAmpEnd / (float)nonSubChannels;
 		azaVec3 earPos = azaMulVec3Scalar(channelVectors[i], earDistance);
 		if (data->config.mode == AZA_SPATIALIZE_ADVANCED) {
+			// channelDelayStart[i] = 0.01f;
+			// channelDelayEnd[i] = 0.01f;
 			channelDelayStart[i] = azaVec3Norm(azaSubVec3(srcPosStart, earPos)) / world->speedOfSound * 1000.0f;
 			channelDelayEnd[i] = azaVec3Norm(azaSubVec3(srcPosEnd, earPos)) / world->speedOfSound * 1000.0f;
 		} else {
@@ -1790,7 +1798,7 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 		totalMagnitudeEnd += channelsEnd[i].amp;
 	}
 
-	float minAmp = data->config.mode == AZA_SPATIALIZE_SIMPLE ? 0.0f : 0.7f;
+	float minAmp = data->config.mode == AZA_SPATIALIZE_SIMPLE ? 0.0f : 0.8f;
 
 	if (dstBuffer.channels.count > 2) {
 		int minChannel = 2;
@@ -1820,15 +1828,12 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 		qsort(channelsEnd, dstBuffer.channels.count, sizeof(struct channelMetadata), compareChannelMetadataChannel);
 	}
 
-	azaBuffer dst = sideBuffer;
-	dst.channels.count = 1;
 #if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS
 	if (repeatCount == 0) {
 		AZA_LOG_INFO("\n");
 	}
 #endif
 	for (uint8_t c = 0; c < sideBuffer.channels.count; c++) {
-		dst.samples = sideBuffer.samples + c;
 		float ampStart = srcAmpStart;
 		float ampEnd = srcAmpEnd;
 		if (dstBuffer.channels.positions[c] != AZA_POS_SUBWOOFER) {
@@ -1845,7 +1850,7 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 			AZA_LOG_INFO("Channel %u delay: %f\n", (uint32_t)c, channelDelayStart[c]);
 		}
 #endif
-		azaBufferMixFade(dst, 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
+		azaBufferMixFade(azaBufferOneChannel(sideBuffer, c), 1.0f, 1.0f, srcBuffer, ampStart, ampEnd);
 	}
 	if (data->config.mode == AZA_SPATIALIZE_ADVANCED) {
 		// Gotta do the doppler
@@ -1856,14 +1861,15 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(delay, c);
 			channelConfig->delay = channelDelayStart[c];
 			azaSpatializeChannelData *channelData = azaGetChannelData(&data->channelData, c);
-			channelData->filter.config.frequency = lerp(24000.0f, 10000.0f, channelDelayStart[c] / 25.0f);
+			channelData->filter.config.frequency = azaSpatializeGetFilterCutoff(channelDelayStart[c], channelDot[c]);
+			// AZA_LOG_INFO("(c %u) filter freq = %f\n", c, channelData->filter.config.frequency);
 			azaProcessFilter(azaBufferOneChannel(sideBuffer, c), &channelData->filter);
 		}
 		azaProcessDelayDynamic(sideBuffer, delay, channelDelayEnd);
 	}
 	azaBufferMix(dstBuffer, 1.0f, sideBuffer, 1.0f);
 #if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS
-	repeatCount = (repeatCount + 1) % 50;
+	repeatCount = (repeatCount + 1) % 10;
 #endif
 	azaPopSideBuffer();
 	return err;
