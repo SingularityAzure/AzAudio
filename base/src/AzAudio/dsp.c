@@ -40,7 +40,7 @@ azaKernel azaKernelDefaultLanczos;
 
 azaWorld azaWorldDefault;
 
-static azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate) {
+azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate) {
 	assert(sideBuffersInUse < AZA_MAX_SIDE_BUFFERS);
 	azaBuffer *buffer = &sideBufferPool[sideBuffersInUse];
 	size_t *capacity = &sideBufferCapacity[sideBuffersInUse];
@@ -62,32 +62,24 @@ static azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t 
 	return *buffer;
 }
 
-static azaBuffer azaPushSideBufferZero(uint32_t frames, uint32_t channels, uint32_t samplerate) {
+azaBuffer azaPushSideBufferZero(uint32_t frames, uint32_t channels, uint32_t samplerate) {
 	azaBuffer buffer = azaPushSideBuffer(frames, channels, samplerate);
 	memset(buffer.samples, 0, sizeof(float) * frames * channels);
 	return buffer;
 }
 
-static azaBuffer azaPushSideBufferCopy(azaBuffer src) {
+azaBuffer azaPushSideBufferCopy(azaBuffer src) {
 	azaBuffer result = azaPushSideBuffer(src.frames, src.channels.count, src.samplerate);
-	if (src.channels.count == src.stride) {
-		memcpy(result.samples, src.samples, sizeof(float) * src.frames * src.channels.count);
-	} else {
-		for (uint32_t i = 0; i < src.frames; i++) {
-			for (uint8_t c = 0; c < src.channels.count; c++) {
-				result.samples[i * result.stride + c] = src.samples[i * src.stride + c];
-			}
-		}
-	}
+	azaBufferCopy(result, src);
 	return result;
 }
 
-static void azaPopSideBuffer() {
+void azaPopSideBuffer() {
 	assert(sideBuffersInUse > 0);
 	sideBuffersInUse--;
 }
 
-static void azaPopSideBuffers(uint8_t count) {
+void azaPopSideBuffers(uint8_t count) {
 	assert(sideBuffersInUse >= count);
 	sideBuffersInUse -= count;
 }
@@ -127,6 +119,19 @@ int azaBufferDeinit(azaBuffer *data) {
 	return AZA_ERROR_NULL_POINTER;
 }
 
+void azaBufferZero(azaBuffer buffer) {
+	if (buffer.samples && buffer.frames && buffer.channels.count) {
+		if AZA_LIKELY(buffer.channels.count == buffer.stride) {
+			memset(buffer.samples, 0, sizeof(float) * buffer.frames * buffer.channels.count);
+		} else {
+			for (uint32_t i = 0; i < buffer.frames * buffer.stride; i += buffer.stride) {
+				for (uint8_t c = 0; c < buffer.channels.count; c++) {
+					buffer.samples[i + c] = 0.0f;
+				}
+			}
+		}
+	}
+}
 
 
 void azaBufferMix(azaBuffer dst, float volumeDst, azaBuffer src, float volumeSrc) {

@@ -226,9 +226,12 @@ typedef struct azaBuffer {
 	azaChannelLayout channels;
 } azaBuffer;
 // You must first set frames and channels before calling this to allocate samples.
-// If samples are externally-managed, you don't have to do this.
+// If samples are externally-managed, you don't have to call either of these.
 int azaBufferInit(azaBuffer *data);
 int azaBufferDeinit(azaBuffer *data);
+
+// Zeroes out an entire buffer
+void azaBufferZero(azaBuffer buffer);
 
 // Mixes src into the existing contents of dst
 // NOTE: This will not respect channel positions. The buffers will be mixed as though the channel layouts are the same.
@@ -263,6 +266,18 @@ static inline azaBuffer azaBufferOneChannel(azaBuffer src, uint8_t channel) {
 		/* .channels   = */ azaChannelLayoutOneChannel(src.channels, channel),
 	};
 }
+
+
+
+azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate);
+
+azaBuffer azaPushSideBufferZero(uint32_t frames, uint32_t channels, uint32_t samplerate);
+
+azaBuffer azaPushSideBufferCopy(azaBuffer src);
+
+void azaPopSideBuffer();
+
+void azaPopSideBuffers(uint8_t count);
 
 
 
