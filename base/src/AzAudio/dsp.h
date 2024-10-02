@@ -756,7 +756,7 @@ typedef struct azaWorld {
 	float speedOfSound;
 } azaWorld;
 extern azaWorld azaWorldDefault;
-
+#define AZA_WORLD_DEFAULT ((azaWorld*)0ull)
 
 
 typedef enum azaSpatializeMode {
