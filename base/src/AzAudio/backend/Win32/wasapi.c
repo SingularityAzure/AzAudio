@@ -551,13 +551,19 @@ static void azaStreamProcess(azaStreamData *data) {
 		}
 	}
 
-	stream->mixCallback((azaBuffer){
+	int err;
+	err = stream->mixCallback((azaBuffer){
 		.samples = samples,
 		.samplerate = data->processingBuffer.samplerate,
 		.frames = numFrames,
 		.stride = data->processingBuffer.channels.count,
 		.channels = data->processingBuffer.channels,
 	}, stream->userdata);
+	if (err) {
+		char buffer[64];
+		data->isActive = AZA_FALSE;
+		AZA_LOG_ERR("Processing stream for device \"%s\" had an error (%s). Disabling stream...\n", data->deviceInfo->name, azaErrorString(err, buffer, sizeof(buffer)));
+	}
 
 	if (stream->deviceInterface == AZA_OUTPUT) {
 		if (data->processingBuffer.samples) {
