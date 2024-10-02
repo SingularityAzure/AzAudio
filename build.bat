@@ -9,6 +9,7 @@ set run_arg=0
 set run=0
 set run_debug=0
 set run_target=
+set run_args=
 set clean=0
 set install=0
 set trace=
@@ -25,7 +26,16 @@ set /a argIndex=0
 set arg=!argValues[%argIndex%]!
 if %run_arg% == 1 (
 	set run_target=%arg%
-	set /a run_arg=0
+	set /a run_arg=2
+	goto Done
+)
+if %run_arg% == 2 (
+	if .!run_args!==. (
+		set run_args="%arg%"
+	) else (
+		set run_args="!run_args! %arg%"
+	)
+	echo !run_args!
 	goto Done
 )
 set arg=Arg%arg%
@@ -119,13 +129,14 @@ if %BuildRelease% == 1 (
 
 if %run% == 1 (
 	cd tests\%run_target%
-	%~dp0tests\%run_target%\bin\Release\%run_target%.exe
+	bin\Release\%run_target%.exe %run_args%
 	cd ..\..
 )
 
 if %run_debug% == 1 (
 	cd tests\%run_target%
-	%~dp0tests\%run_target%\bin\Debug\%run_target%_debug.exe
+	bin\Debug\%run_target%_debug.exe %run_args%
+	@REM %~dp0tests\%run_target%\bin\Debug\%run_target%_debug.exe %run_args%
 	cd ..\..
 )
 if %errorlevel% NEQ 0 (
