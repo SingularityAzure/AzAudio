@@ -34,8 +34,11 @@ enum {
 	AZA_ERROR_INVALID_CONFIGURATION,
 	// A generic azaDSPData struct wasn't a valid kind
 	AZA_ERROR_INVALID_DSP_STRUCT,
+	// Enum count
+	AZA_ERROR_ONE_AFTER_LAST,
 };
-extern const char *azaErrorStr[];
+// For known error codes, buffer is unused. For unknown error codes, prints into buffer and returns it.
+const char *azaErrorString(int error, char *buffer, size_t bufferSize);
 
 #ifdef __cplusplus
 }

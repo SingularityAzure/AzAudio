@@ -89,10 +89,22 @@ const char *azaErrorStr[] = {
 	"AZA_ERROR_BACKEND_UNAVAILABLE",
 	"AZA_ERROR_BACKEND_LOAD_ERROR",
 	"AZA_ERROR_BACKEND_ERROR",
-	"AZA_ERROR_NO_DEVICE_AVAILABLE",
+	"AZA_ERROR_NO_DEVICES_AVAILABLE",
 	"AZA_ERROR_NULL_POINTER",
 	"AZA_ERROR_INVALID_CHANNEL_COUNT",
+	"AZA_ERROR_CHANNEL_COUNT_MISMATCH",
 	"AZA_ERROR_INVALID_FRAME_COUNT",
 	"AZA_ERROR_INVALID_CONFIGURATION",
 	"AZA_ERROR_INVALID_DSP_STRUCT",
 };
+
+const char* azaErrorString(int error, char *buffer, size_t bufferSize) {
+	if (0 <= error && error < AZA_ERROR_ONE_AFTER_LAST) {
+		return azaErrorStr[error];
+	}
+	if (buffer && bufferSize) {
+		snprintf(buffer, bufferSize, "Unknown Error 0x%x", error);
+		return buffer;
+	}
+	return "No buffer for unknown error code :(";
+}
