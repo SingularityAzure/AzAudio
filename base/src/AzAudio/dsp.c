@@ -486,18 +486,32 @@ int azaProcessCubicLimiter(azaBuffer buffer) {
 
 
 
+uint32_t azaLookaheadLimiterGetAllocSize(uint8_t channelCapInline) {
+	size_t size = sizeof(azaLookaheadLimiter);
+	size = azaAddSizeWithAlign(size, channelCapInline * sizeof(azaLookaheadLimiterChannelData), alignof(azaLookaheadLimiterChannelData));
+	return (uint32_t)size;
+}
+
+void azaLookaheadLimiterInit(azaLookaheadLimiter *data, uint32_t allocSize, azaLookaheadLimiterConfig config, uint8_t channelCapInline) {
+	data->header.kind = AZA_DSP_LOOKAHEAD_LIMITER;
+	data->header.structSize = allocSize;
+	data->config = config;
+	azaDSPChannelDataInit(&data->channelData, channelCapInline, sizeof(azaLookaheadLimiterChannelData), alignof(azaLookaheadLimiterChannelData));
+}
+
+void azaLookaheadLimiterDeinit(azaLookaheadLimiter *data) {
+	azaDSPChannelDataDeinit(&data->channelData);
+}
+
 azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, uint8_t channelCapInline) {
-	uint32_t size = sizeof(azaLookaheadLimiter) + channelCapInline * sizeof(azaLookaheadLimiterChannelData);
+	uint32_t size = azaLookaheadLimiterGetAllocSize(channelCapInline);
 	azaLookaheadLimiter *result = aza_calloc(1, size);
-	result->header.kind = AZA_DSP_LOOKAHEAD_LIMITER;
-	result->header.structSize = size;
-	result->config = config;
-	azaDSPChannelDataInit(&result->channelData, channelCapInline, sizeof(azaLookaheadLimiterChannelData), alignof(azaLookaheadLimiterChannelData));
+	azaLookaheadLimiterInit(result, size, config, channelCapInline);
 	return result;
 }
 
 void azaFreeLookaheadLimiter(azaLookaheadLimiter *data) {
-	azaDSPChannelDataDeinit(&data->channelData);
+	azaLookaheadLimiterDeinit(data);
 	aza_free(data);
 }
 
