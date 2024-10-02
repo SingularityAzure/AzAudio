@@ -565,14 +565,15 @@ typedef struct azaSamplerConfig {
 	azaBuffer *buffer;
 	// playback speed as a multiple where 1 is full speed
 	float speed;
-	// volume of effect in dB
+	// volume of effect in dB (0.0f indicates full volume)
 	float gain;
 } azaSamplerConfig;
 
 typedef struct azaSampler {
 	azaDSP header;
 	azaSamplerConfig config;
-	float frame;
+	uint32_t frame;
+	float frameFraction;
 	float s; // Smooth speed
 	float g; // Smooth gain
 } azaSampler;

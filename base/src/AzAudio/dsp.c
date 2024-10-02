@@ -1047,7 +1047,7 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 		}
 	}
 	float transition = expf(-1.0f / (AZAUDIO_SAMPLER_TRANSITION_FRAMES));
-	float samplerateFactor = (float)buffer.samplerate / (float)data->config.buffer->samplerate;
+	float samplerateFactor = (float)data->config.buffer->samplerate / (float)buffer.samplerate;
 	for (size_t i = 0; i < buffer.frames; i++) {
 		data->s = data->config.speed + transition * (data->s - data->config.speed);
 		data->g = data->config.gain + transition * (data->g - data->config.gain);
@@ -1055,8 +1055,6 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 		// Adjust for different samplerates
 		float speed = data->s * samplerateFactor;
 		float volume = aza_db_to_ampf(data->g);
-
-		float frameFraction = data->frame - (float)((int)data->frame);
 
 		for (uint8_t c = 0; c < buffer.channels.count; c++) {
 			float sample = 0.0f;
@@ -1072,20 +1070,20 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 			if (speed <= 1.0f) {
 				// Cubic
 				float abcd[4];
-				int ii = (int)data->frame + (int)data->config.buffer->frames - 2;
+				int ii = data->frame + (int)data->config.buffer->frames - 2;
 				for (int i = 0; i < 4; i++) {
-					abcd[i] = data->config.buffer->samples[ii++ % data->config.buffer->frames];
+					abcd[i] = data->config.buffer->samples[(ii++ % data->config.buffer->frames) * data->config.buffer->stride + c];
 				}
-				sample = cubic(abcd[0], abcd[1], abcd[2], abcd[3], frameFraction);
+				sample = cubic(abcd[0], abcd[1], abcd[2], abcd[3], data->frameFraction);
 			} else {
 				// Oversampling
 				float total = 0.0f;
-				total += data->config.buffer->samples[(int)data->frame % data->config.buffer->frames] * (1.0f - frameFraction);
-				for (int i = 1; i < (int)data->config.speed; i++) {
-					total += data->config.buffer->samples[((int)data->frame + i) % data->config.buffer->frames];
+				total += data->config.buffer->samples[(data->frame % data->config.buffer->frames) * data->config.buffer->stride + c] * (1.0f - data->frameFraction);
+				for (int i = 1; i < (int)speed; i++) {
+					total += data->config.buffer->samples[((data->frame + i) % data->config.buffer->frames) * data->config.buffer->stride + c];
 				}
-				total += data->config.buffer->samples[((int)data->frame + (int)data->config.speed) % data->config.buffer->frames] * frameFraction;
-				sample = total / (float)((int)data->config.speed);
+				total += data->config.buffer->samples[((data->frame + (int)speed) % data->config.buffer->frames) * data->config.buffer->stride + c] * data->frameFraction;
+				sample = total / (float)((int)speed);
 			}
 
 			/* Linear
@@ -1098,9 +1096,12 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 
 			buffer.samples[i * buffer.stride + c] = sample * volume;
 		}
-		data->frame = data->frame + data->s;
-		if ((uint32_t)data->frame > data->config.buffer->frames) {
-			data->frame -= (float)data->config.buffer->frames;
+		data->frameFraction += speed;
+		uint32_t framesToAdd = (uint32_t)data->frameFraction;
+		data->frame += framesToAdd;
+		data->frameFraction -= framesToAdd;
+		if (data->frame > data->config.buffer->frames) {
+			data->frame -= data->config.buffer->frames;
 		}
 	}
 	if (data->header.pNext) {
