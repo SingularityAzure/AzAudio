@@ -515,7 +515,6 @@ void azaFreeLookaheadLimiter(azaLookaheadLimiter *data) {
 	aza_free(data);
 }
 
-// TODO: This implementation is NOT functioning correctly (and it was that way before the refactor too). It clips hard instead of always leaving room for the waveform... It does do some kind of "softening" of the clipping, but we're taking a latency penalty so we should get the full benefit!
 int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
@@ -537,23 +536,33 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 		}
 		float gain = data->config.gainInput;
 		float peak = AZA_MAX(aza_amp_to_dbf(gainBuffer.samples[i]) + gain, 0.0f);
-		data->sum += peak - data->gainBuffer[index];
-		float average = data->sum / AZAUDIO_LOOKAHEAD_SAMPLES;
-		if (average > peak) {
-			data->sum += average - peak;
-			peak = average;
+		float slope = (peak - data->sum) / AZAUDIO_LOOKAHEAD_SAMPLES;
+		if (slope > 0.0f && slope > data->slope) {
+			data->slope = slope;
+			data->cooldown = AZAUDIO_LOOKAHEAD_SAMPLES;
+		} else if (data->cooldown == 0 && data->sum > 0.0f) {
+			data->slope = -data->sum / (AZAUDIO_LOOKAHEAD_SAMPLES * 5.0f);
+			for (int index2 = 0; index2 < AZAUDIO_LOOKAHEAD_SAMPLES; index2++) {
+				float peak2 = data->peakBuffer[(index+index2)%AZAUDIO_LOOKAHEAD_SAMPLES];
+				float slope2 = (peak2 - data->sum) / (float)(index2+1);
+				if (slope2 > 0.0f && slope2 > data->slope) {
+					data->slope = slope2;
+					data->cooldown = index2+1;
+				}
+			}
+		} else if (data->cooldown > 0) {
+			data->cooldown -= 1;
 		}
-		data->gainBuffer[index] = peak;
-
+		data->sum += data->slope;
+		if (data->sum < 0.0f) {
+			data->slope = 0.0f;
+			data->sum = 0.0f;
+		}
+		data->peakBuffer[index] = peak;
 		index = (index+1)%AZAUDIO_LOOKAHEAD_SAMPLES;
-
-		if (average > data->gainBuffer[index])
-			gain -= average;
-		else
-			gain -= data->gainBuffer[index];
-		gainBuffer.samples[i] = aza_db_to_ampf(gain);
+		gainBuffer.samples[i] = aza_db_to_ampf(-data->sum);
 	}
-	float amountOutput = aza_db_to_ampf(data->config.gainOutput);
+	float amountOutput = aza_db_to_ampf(data->config.gainOutput + data->config.gainInput);
 	// Apply the gain from gainBuffer to all the channels
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
 		azaLookaheadLimiterChannelData *channelData = azaGetChannelData(&data->channelData, c);
@@ -561,9 +570,9 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 
 		for (uint32_t i = 0; i < buffer.frames; i++) {
 			uint32_t s = i * buffer.stride + c;
-			channelData->valBuffer[data->index] = buffer.samples[s];
+			channelData->valBuffer[index] = buffer.samples[s];
 			index = (index+1)%AZAUDIO_LOOKAHEAD_SAMPLES;
-			float out = azaClampf(channelData->valBuffer[data->index] * gainBuffer.samples[i], -1.0f, 1.0f);
+			float out = azaClampf(channelData->valBuffer[index] * gainBuffer.samples[i], -1.0f, 1.0f);
 			buffer.samples[s] = out * amountOutput;
 		}
 	}

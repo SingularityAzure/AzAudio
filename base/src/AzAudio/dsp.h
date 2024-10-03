@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#define AZAUDIO_LOOKAHEAD_SAMPLES 128
+#define AZAUDIO_LOOKAHEAD_SAMPLES 64
 // The duration of transitions between the variable parameter values
 #define AZAUDIO_SAMPLER_TRANSITION_FRAMES 128
 
@@ -381,9 +381,11 @@ typedef struct azaLookaheadLimiter {
 	azaLookaheadLimiterConfig config;
 
 	// Data shared by all channels
-	float gainBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
+	float peakBuffer[AZAUDIO_LOOKAHEAD_SAMPLES];
 	int index;
+	int cooldown;
 	float sum;
+	float slope;
 
 	azaDSPChannelData channelData;
 } azaLookaheadLimiter;
