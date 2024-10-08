@@ -385,6 +385,11 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data);
 
 
 
+typedef struct azaSamplerPos {
+	uint32_t frame;
+	float fraction;
+} azaSamplerPos;
+
 typedef struct azaSamplerConfig {
 	// buffer containing the sound we're sampling
 	azaBuffer *buffer;
@@ -397,8 +402,7 @@ typedef struct azaSamplerConfig {
 typedef struct azaSampler {
 	azaDSP header;
 	azaSamplerConfig config;
-	uint32_t frame;
-	float frameFraction;
+	azaSamplerPos pos;
 	float s; // Smooth speed
 	float g; // Smooth gain
 } azaSampler;
@@ -408,7 +412,7 @@ static inline uint32_t azaSamplerGetAllocSize() {
 	return (uint32_t)sizeof(azaSampler);
 }
 // initializes azaSampler in existing memory
-void azaSamplerInit(azaSampler *data, azaSamplerConfig config);
+void azaSamplerInit(azaSampler *data, uint32_t allocSize, azaSamplerConfig config);
 // frees any additional memory that the azaSampler may have allocated
 void azaSamplerDeinit(azaSampler *data);
 

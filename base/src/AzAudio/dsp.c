@@ -1038,11 +1038,12 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 
 
 
-void azaSamplerInit(azaSampler *data, azaSamplerConfig config) {
+void azaSamplerInit(azaSampler *data, uint32_t allocSize, azaSamplerConfig config) {
 	data->header.kind = AZA_DSP_SAMPLER;
-	data->header.structSize = azaSamplerGetAllocSize();
+	data->header.structSize = allocSize;
 	data->config = config;
-	data->frame = 0;
+	data->pos.frame = 0;
+	data->pos.fraction = 0.0f;
 	data->s = config.speed;
 	// Starting at zero ensures click-free playback no matter what
 	data->g = 0.0f;
@@ -1056,7 +1057,7 @@ void azaSamplerDeinit(azaSampler *data) {
 azaSampler* azaMakeSampler(azaSamplerConfig config) {
 	uint32_t size = azaSamplerGetAllocSize();
 	azaSampler *result = aza_calloc(1, size);
-	azaSamplerInit(result, config);
+	azaSamplerInit(result, size, config);
 	return result;
 }
 
@@ -1099,38 +1100,38 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 			if (speed <= 1.0f) {
 				// Cubic
 				float abcd[4];
-				int ii = data->frame + (int)data->config.buffer->frames - 2;
+				int ii = data->pos.frame + (int)data->config.buffer->frames - 2;
 				for (int i = 0; i < 4; i++) {
 					abcd[i] = data->config.buffer->samples[(ii++ % data->config.buffer->frames) * data->config.buffer->stride + c];
 				}
-				sample = cubic(abcd[0], abcd[1], abcd[2], abcd[3], data->frameFraction);
+				sample = cubic(abcd[0], abcd[1], abcd[2], abcd[3], data->pos.fraction);
 			} else {
 				// Oversampling
 				float total = 0.0f;
-				total += data->config.buffer->samples[(data->frame % data->config.buffer->frames) * data->config.buffer->stride + c] * (1.0f - data->frameFraction);
+				total += data->config.buffer->samples[(data->pos.frame % data->config.buffer->frames) * data->config.buffer->stride + c] * (1.0f - data->pos.fraction);
 				for (int i = 1; i < (int)speed; i++) {
-					total += data->config.buffer->samples[((data->frame + i) % data->config.buffer->frames) * data->config.buffer->stride + c];
+					total += data->config.buffer->samples[((data->pos.frame + i) % data->config.buffer->frames) * data->config.buffer->stride + c];
 				}
-				total += data->config.buffer->samples[((data->frame + (int)speed) % data->config.buffer->frames) * data->config.buffer->stride + c] * data->frameFraction;
+				total += data->config.buffer->samples[((data->pos.frame + (int)speed) % data->config.buffer->frames) * data->config.buffer->stride + c] * data->pos.fraction;
 				sample = total / (float)((int)speed);
 			}
 
 			/* Linear
-			int t = (int)data->frame + (int)data->s;
-			for (int i = (int)data->frame; i <= t+1; i++) {
-				float x = data->frame - (float)(i);
+			int t = (int)data->pos.frame + (int)data->s;
+			for (int i = (int)data->pos.frame; i <= t+1; i++) {
+				float x = data->pos.frame - (float)(i);
 				sample += data->config.buffer->samples[i % data->config.buffer->frames] * linc(x);
 			}
 			*/
 
 			buffer.samples[i * buffer.stride + c] = sample * volume;
 		}
-		data->frameFraction += speed;
-		uint32_t framesToAdd = (uint32_t)data->frameFraction;
-		data->frame += framesToAdd;
-		data->frameFraction -= framesToAdd;
-		if (data->frame > data->config.buffer->frames) {
-			data->frame -= data->config.buffer->frames;
+		data->pos.fraction += speed;
+		uint32_t framesToAdd = (uint32_t)data->pos.fraction;
+		data->pos.frame += framesToAdd;
+		data->pos.fraction -= framesToAdd;
+		if (data->pos.frame > data->config.buffer->frames) {
+			data->pos.frame -= data->config.buffer->frames;
 		}
 	}
 	if (data->header.pNext) {
