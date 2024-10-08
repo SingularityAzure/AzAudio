@@ -189,7 +189,7 @@ int main(int argumentCount, char** argumentValues) {
 	}
 
 	limiter = azaMakeLookaheadLimiter((azaLookaheadLimiterConfig) {
-		.gainInput  =  0.0f,
+		.gainInput  = -3.0f,
 		.gainOutput = -0.1f,
 	}, outputChannelCount);
 

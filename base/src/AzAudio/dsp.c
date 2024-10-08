@@ -562,7 +562,8 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 		index = (index+1)%AZAUDIO_LOOKAHEAD_SAMPLES;
 		gainBuffer.samples[i] = aza_db_to_ampf(-data->sum);
 	}
-	float amountOutput = aza_db_to_ampf(data->config.gainOutput + data->config.gainInput);
+	float amountInput = aza_db_to_ampf(data->config.gainInput);
+	float amountOutput = aza_db_to_ampf(data->config.gainOutput);
 	// Apply the gain from gainBuffer to all the channels
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
 		azaLookaheadLimiterChannelData *channelData = azaGetChannelData(&data->channelData, c);
@@ -572,7 +573,7 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 			uint32_t s = i * buffer.stride + c;
 			channelData->valBuffer[index] = buffer.samples[s];
 			index = (index+1)%AZAUDIO_LOOKAHEAD_SAMPLES;
-			float out = azaClampf(channelData->valBuffer[index] * gainBuffer.samples[i], -1.0f, 1.0f);
+			float out = azaClampf(channelData->valBuffer[index] * gainBuffer.samples[i] * amountInput, -1.0f, 1.0f);
 			buffer.samples[s] = out * amountOutput;
 		}
 	}
