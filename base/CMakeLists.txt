@@ -9,6 +9,7 @@ file(GLOB BACKEND_SOURCES "src/AzAudio/backend/${TARGET_PLATFORM_NAME}/*")
 add_library(AzAudio STATIC
 	src/AzAudio/AzAudio.h
 	src/AzAudio/AzAudio.c
+	src/AzAudio/channel_layout.h
 	src/AzAudio/version.c
 	src/AzAudio/dsp.h
 	src/AzAudio/dsp.c
