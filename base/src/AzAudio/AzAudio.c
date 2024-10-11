@@ -82,7 +82,7 @@ void azaSetLogCallback(fp_azaLogCallback newLogFunc) {
 	}
 }
 
-const char *azaErrorStr[] = {
+static const char *azaErrorStr[] = {
 	"AZA_SUCCESS",
 	"AZA_ERROR_BACKEND_UNAVAILABLE",
 	"AZA_ERROR_BACKEND_LOAD_ERROR",
@@ -93,7 +93,11 @@ const char *azaErrorStr[] = {
 	"AZA_ERROR_CHANNEL_COUNT_MISMATCH",
 	"AZA_ERROR_INVALID_FRAME_COUNT",
 	"AZA_ERROR_INVALID_CONFIGURATION",
-	"AZA_ERROR_INVALID_DSP_STRUCT",
+	"AZA_ERROR_DSP_INVALID_KIND",
+	"AZA_ERROR_DSP_INTERFACE_EXPECTED_SINGLE",
+	"AZA_ERROR_DSP_INTERFACE_EXPECTED_DUAL",
+	"AZA_ERROR_DSP_INTERFACE_NOT_GENERIC",
+	"AZA_ERROR_MIXER_ROUTING_CYCLE",
 };
 
 const char* azaErrorString(int error, char *buffer, size_t bufferSize) {

@@ -17,7 +17,7 @@ azaLookaheadLimiter *limiter = NULL;
 float angle = 0.0f;
 float time = 0.0f;
 
-int mixCallbackOutput(azaBuffer buffer, void *userData) {
+int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	float frameDelta = 1.0f / (float)buffer.samplerate;
 	float timeDelta = (float)buffer.frames * frameDelta;
 	int32_t clickFrame = (int32_t)((0.5f - time) * (float)buffer.samplerate);
@@ -35,9 +35,9 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		}
 	}
 	int err;
-	if ((err = azaProcessLookaheadLimiter(buffer, limiter))) {
+	if ((err = azaLookaheadLimiterProcess(limiter, buffer))) {
 		char buffer[64];
-		AZA_LOG_ERR("azaProcessLookaheadLimiter returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
+		AZA_LOG_ERR("azaLookaheadLimiterProcess returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
 		goto done;
 	}
 done:

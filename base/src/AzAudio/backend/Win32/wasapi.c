@@ -552,13 +552,13 @@ static void azaStreamProcess(azaStreamData *data) {
 	}
 
 	int err;
-	err = stream->mixCallback((azaBuffer){
+	err = stream->mixCallback(stream->userdata, (azaBuffer){
 		.samples = samples,
 		.samplerate = data->processingBuffer.samplerate,
 		.frames = numFrames,
 		.stride = data->processingBuffer.channels.count,
 		.channels = data->processingBuffer.channels,
-	}, stream->userdata);
+	});
 	if (err) {
 		char buffer[64];
 		data->isActive = AZA_FALSE;

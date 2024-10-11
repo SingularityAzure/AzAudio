@@ -16,6 +16,7 @@ add_library(AzAudio STATIC
 	src/AzAudio/error.h
 	src/AzAudio/helpers.h
 	src/AzAudio/helpers.c
+	src/AzAudio/math.h
 	# backend
 	src/AzAudio/backend/backend.h
 	src/AzAudio/backend/interface.h

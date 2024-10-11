@@ -32,8 +32,17 @@ enum {
 	AZA_ERROR_INVALID_FRAME_COUNT,
 	// Something wasn't configured right... check stderr
 	AZA_ERROR_INVALID_CONFIGURATION,
-	// A generic azaDSPData struct wasn't a valid kind
-	AZA_ERROR_INVALID_DSP_STRUCT,
+	// A generic azaDSP struct wasn't a valid kind
+	AZA_ERROR_DSP_INVALID_KIND,
+	// An azaDSP was expecting a single-buffer interface (like `int azaFilterProcess(azaFilter *data, azaBuffer buffer)`) and was given a dual-buffer interface
+	AZA_ERROR_DSP_INTERFACE_EXPECTED_SINGLE,
+	// An azaDSP was expecting a dual-buffer interface (like `int azaSpatializeProcess(azaBuffer dst, azaBuffer src`, azaSpatialize *data) and was given a single-buffer interface
+	AZA_ERROR_DSP_INTERFACE_EXPECTED_DUAL,
+	// An azaDSP was used generically when its interface makes no sense as such (requires additional information)
+	// TODO: Maybe make interfaces like this not a thing, allowing everything to be stored in the struct
+	AZA_ERROR_DSP_INTERFACE_NOT_GENERIC,
+	// Attempted to process an azaMixer with circular track routing
+	AZA_ERROR_MIXER_ROUTING_CYCLE,
 	// Enum count
 	AZA_ERROR_ONE_AFTER_LAST,
 };

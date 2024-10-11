@@ -22,8 +22,6 @@ typedef enum azaDeviceInterface {
 	AZA_INPUT,
 } azaDeviceInterface;
 
-typedef int (*fp_azaMixCallback)(azaBuffer buffer, void *userData);
-
 typedef struct azaStream {
 	// backend-specific data
 	void *data;

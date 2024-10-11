@@ -76,7 +76,7 @@ float angle = 0.0f;
 float angle2 = 0.0f;
 std::vector<float> endChannelDelays;
 
-int mixCallbackOutput(azaBuffer buffer, void *userData) {
+int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	static float *processingBuffer = new float[2048];
 	static size_t processingBufferCapacity = 2048;
 	if (processingBufferCapacity < buffer.frames) {
@@ -146,13 +146,13 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 		0.0f,
 		// 0.0f,
 	};
-	if ((err = azaProcessGate(srcBuffer, gate))) {
+	if ((err = azaGateProcess(gate, srcBuffer))) {
 		return err;
 	}
 	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
 	float volumeStart = azaClampf(10.0f / azaVec3Norm(srcPosStart), 0.0f, 1.0f);
 	float volumeEnd = azaClampf(10.0f / azaVec3Norm(srcPosEnd), 0.0f, 1.0f);
-	if ((err = azaProcessSpatialize(spatialize, buffer, srcBuffer, srcPosStart, volumeStart, srcPosEnd, volumeEnd))) {
+	if ((err = azaSpatializeProcess(spatialize, buffer, srcBuffer, srcPosStart, volumeStart, srcPosEnd, volumeEnd))) {
 		return err;
 	}
 	// printf("gate gain: %f\n", gate->gain);
@@ -160,34 +160,34 @@ int mixCallbackOutput(azaBuffer buffer, void *userData) {
 	for (float &delay : endChannelDelays) {
 		delay = 600.0f + sinf(angle2) * 400.0f;
 	}
-	// if ((err = azaProcessDelayDynamic(buffer, delayDynamic, endChannelDelays.data()))) {
+	// if ((err = azaDelayDynamicProcess(delayDynamic, buffer, endChannelDelays.data()))) {
 	// 	return err;
 	// }
-	// if ((err = azaProcessDelay(buffer, delay))) {
+	// if ((err = azaDelayProcess(delay, buffer))) {
 	// 	return err;
 	// }
-	// if ((err = azaProcessDelay(buffer, delay2))) {
+	// if ((err = azaDelayProcess(delay2, buffer))) {
 	// 	return err;
 	// }
-	// if ((err = azaProcessDelay(buffer, delay3))) {
+	// if ((err = azaDelayProcess(delay3, buffer))) {
 	// 	return err;
 	// }
-	if ((err = azaProcessReverb(buffer, reverb))) {
+	if ((err = azaReverbProcess(reverb, buffer))) {
 		return err;
 	}
-	if ((err = azaProcessFilter(buffer, highPass))) {
+	if ((err = azaFilterProcess(highPass, buffer))) {
 		return err;
 	}
-	if ((err = azaProcessCompressor(buffer, compressor))) {
+	if ((err = azaCompressorProcess(compressor, buffer))) {
 		return err;
 	}
-	if ((err = azaProcessLookaheadLimiter(buffer, limiter))) {
+	if ((err = azaLookaheadLimiterProcess(limiter, buffer))) {
 		return err;
 	}
 	return AZA_SUCCESS;
 }
 
-int mixCallbackInput(azaBuffer buffer, void *userData) {
+int mixCallbackInput(void *userData, azaBuffer buffer) {
 	numInputBuffers++;
 	lastInputBufferSize = buffer.frames;
 	size_t b_i = micBuffer.size();

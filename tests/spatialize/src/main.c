@@ -94,31 +94,31 @@ void updateObjects(uint32_t count, float timeDelta) {
 	}
 }
 
-int mixCallbackOutput(azaBuffer buffer, void *userData) {
+int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	float timeDelta = (float)buffer.frames / (float)buffer.samplerate;
 	int err;
 	updateObjects(bufferCat.channels.count, timeDelta);
 	azaBufferZero(buffer);
 	azaBuffer sampledBuffer = azaPushSideBufferZero(buffer.frames, sampler->config.buffer->channels.count, buffer.samplerate);
 
-	if ((err = azaProcessSampler(sampledBuffer, sampler))) {
+	if ((err = azaSamplerProcess(sampler, sampledBuffer))) {
 		char buffer[64];
-		AZA_LOG_ERR("azaProcessSampler returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
+		AZA_LOG_ERR("azaSamplerProcess returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
 		goto done;
 	}
 
 	for (uint8_t c = 0; c < bufferCat.channels.count; c++) {
 		float volumeStart = azaClampf(3.0f / azaVec3Norm(objects[c].posPrev), 0.0f, 1.0f);
 		float volumeEnd = azaClampf(3.0f / azaVec3Norm(objects[c].pos), 0.0f, 1.0f);
-		if ((err = azaProcessSpatialize(spatialize[c], buffer, azaBufferOneChannel(sampledBuffer, c), objects[c].posPrev, volumeStart, objects[c].pos, volumeEnd))) {
+		if ((err = azaSpatializeProcess(spatialize[c], buffer, azaBufferOneChannel(sampledBuffer, c), objects[c].posPrev, volumeStart, objects[c].pos, volumeEnd))) {
 			char buffer[64];
-			AZA_LOG_ERR("azaProcessSpatialize returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
+			AZA_LOG_ERR("azaSpatializeProcess returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
 			goto done;
 		}
 	}
-	if ((err = azaProcessLookaheadLimiter(buffer, limiter))) {
+	if ((err = azaLookaheadLimiterProcess(limiter, buffer))) {
 		char buffer[64];
-		AZA_LOG_ERR("azaProcessLookaheadLimiter returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
+		AZA_LOG_ERR("azaLookaheadLimiterProcess returned %s\n", azaErrorString(err, buffer, sizeof(buffer)));
 		goto done;
 	}
 done:

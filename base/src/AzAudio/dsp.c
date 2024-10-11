@@ -251,18 +251,51 @@ void azaBufferCopyChannel(azaBuffer dst, uint8_t channelDst, azaBuffer src, uint
 
 
 
-int azaProcessDSP(azaBuffer buffer, azaDSP *data) {
+int azaDSPProcessSingle(azaDSP *data, azaBuffer buffer) {
 	switch (data->kind) {
-		case AZA_DSP_RMS: return azaProcessRMS(buffer, (azaRMS*)data);
-		case AZA_DSP_FILTER: return azaProcessFilter(buffer, (azaFilter*)data);
-		case AZA_DSP_LOOKAHEAD_LIMITER: return azaProcessLookaheadLimiter(buffer, (azaLookaheadLimiter*)data);
-		case AZA_DSP_COMPRESSOR: return azaProcessCompressor(buffer, (azaCompressor*)data);
-		case AZA_DSP_DELAY: return azaProcessDelay(buffer, (azaDelay*)data);
-		case AZA_DSP_REVERB: return azaProcessReverb(buffer, (azaReverb*)data);
-		case AZA_DSP_SAMPLER: return azaProcessSampler(buffer, (azaSampler*)data);
-		case AZA_DSP_GATE: return azaProcessGate(buffer, (azaGate*)data);
-		default: return AZA_ERROR_INVALID_DSP_STRUCT;
+		case AZA_DSP_USER_SINGLE: return azaDSPUserSingleProcess((azaDSPUser*)data, buffer);
+		case AZA_DSP_CUBIC_LIMITER: return azaCubicLimiterProcess((azaCubicLimiter*)data, buffer);
+		case AZA_DSP_RMS: return azaRMSProcess((azaRMS*)data, buffer);
+		case AZA_DSP_LOOKAHEAD_LIMITER: return azaLookaheadLimiterProcess((azaLookaheadLimiter*)data, buffer);
+		case AZA_DSP_FILTER: return azaFilterProcess((azaFilter*)data, buffer);
+		case AZA_DSP_COMPRESSOR: return azaCompressorProcess((azaCompressor*)data, buffer);
+		case AZA_DSP_DELAY: return azaDelayProcess((azaDelay*)data, buffer);
+		case AZA_DSP_REVERB: return azaReverbProcess((azaReverb*)data, buffer);
+		case AZA_DSP_SAMPLER: return azaSamplerProcess((azaSampler*)data, buffer);
+		case AZA_DSP_GATE: return azaGateProcess((azaGate*)data, buffer);
+		case AZA_DSP_DELAY_DYNAMIC: return azaDelayDynamicProcess((azaDelayDynamic*)data, buffer, NULL);
+
+		case AZA_DSP_SPATIALIZE:
+			return AZA_ERROR_DSP_INTERFACE_NOT_GENERIC;
+
+		case AZA_DSP_USER_DUAL:
+			return AZA_ERROR_DSP_INTERFACE_EXPECTED_DUAL;
+
+		default: return AZA_ERROR_DSP_INVALID_KIND;
 	}
+}
+
+int azaDSPProcessDual(azaDSP *data, azaBuffer dst, azaBuffer src) {
+	switch (data->kind) {
+		case AZA_DSP_USER_DUAL: return azaDSPUserDualProcess((azaDSPUser*)data, dst, src);
+		// TODO: Probably make uses like this less specialized, perhaps by extending the struct
+		case AZA_DSP_RMS: return azaRMSCombinedProcess((azaRMS*)data, dst, src, azaOpMax);
+
+		case AZA_DSP_SPATIALIZE:
+			return AZA_ERROR_DSP_INTERFACE_NOT_GENERIC;
+
+		default: return AZA_ERROR_DSP_INVALID_KIND;
+	}
+}
+
+
+
+int azaDSPUserSingleProcess(azaDSPUser *data, azaBuffer buffer) {
+	return data->processSingle(data->userdata, buffer);
+}
+
+int azaDSPUserDualProcess(azaDSPUser *data, azaBuffer dst, azaBuffer src) {
+	return data->processDual(data->userdata, dst, src);
 }
 
 
@@ -388,7 +421,7 @@ static void azaHandleRMSBuffer(azaRMS *data, uint8_t channels) {
 	}
 }
 
-int azaProcessRMSCombined(azaBuffer dst, azaBuffer src, azaRMS *data, fp_azaOp op) {
+int azaRMSCombinedProcess(azaRMS *data, azaBuffer dst, azaBuffer src, fp_azaOp op) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -415,12 +448,12 @@ int azaProcessRMSCombined(azaBuffer dst, azaBuffer src, azaRMS *data, fp_azaOp o
 			data->index = 0;
 	}
 	if (data->header.pNext) {
-		return azaProcessDSP(dst, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, dst);
 	}
 	return AZA_SUCCESS;
 }
 
-int azaProcessRMS(azaBuffer buffer, azaRMS *data) {
+int azaRMSProcess(azaRMS *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -448,7 +481,7 @@ int azaProcessRMS(azaBuffer buffer, azaRMS *data) {
 		}
 	}
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -464,7 +497,23 @@ static float azaCubicLimiterSample(float sample) {
 	return sample;
 }
 
-int azaProcessCubicLimiter(azaBuffer buffer) {
+void azaCubicLimiterInit(azaCubicLimiter *data, uint32_t allocSize) {
+	data->kind = AZA_DSP_CUBIC_LIMITER;
+	data->structSize = allocSize;
+}
+
+azaCubicLimiter* azaMakeCubicLimiter() {
+	uint32_t size = azaCubicLimiterGetAllocSize();
+	azaCubicLimiter *result = aza_calloc(1, size);
+	azaCubicLimiterInit(result, size);
+	return result;
+}
+
+void azaFreeCubicLimiter(azaCubicLimiter *data) {
+	aza_free(data);
+}
+
+int azaCubicLimiterProcess(azaCubicLimiter *data, azaBuffer buffer) {
 	{
 		int err = azaCheckBuffer(buffer);
 		if (err) return err;
@@ -515,7 +564,7 @@ void azaFreeLookaheadLimiter(azaLookaheadLimiter *data) {
 	aza_free(data);
 }
 
-int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
+int azaLookaheadLimiterProcess(azaLookaheadLimiter *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -581,7 +630,7 @@ int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data) {
 	data->channelData.countActive = buffer.channels.count;
 	azaPopSideBuffer();
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -617,7 +666,7 @@ void azaFreeFilter(azaFilter *data) {
 	aza_free(data);
 }
 
-int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
+int azaFilterProcess(azaFilter *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -661,7 +710,7 @@ int azaProcessFilter(azaBuffer buffer, azaFilter *data) {
 	}
 	data->channelData.countActive = buffer.channels.count;
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -698,7 +747,7 @@ void azaFreeCompressor(azaCompressor *data) {
 	aza_free(data);
 }
 
-int azaProcessCompressor(azaBuffer buffer, azaCompressor *data) {
+int azaCompressorProcess(azaCompressor *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -706,7 +755,7 @@ int azaProcessCompressor(azaBuffer buffer, azaCompressor *data) {
 		if (err) return err;
 	}
 	azaBuffer rmsBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
-	azaProcessRMSCombined(rmsBuffer, buffer, &data->rms, azaOpMax);
+	azaRMSCombinedProcess(&data->rms, rmsBuffer, buffer, azaOpMax);
 	float t = (float)buffer.samplerate / 1000.0f;
 	float attackFactor = expf(-1.0f / (data->config.attack * t));
 	float decayFactor = expf(-1.0f / (data->config.decay * t));
@@ -741,7 +790,7 @@ int azaProcessCompressor(azaBuffer buffer, azaCompressor *data) {
 	}
 	azaPopSideBuffer();
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -825,7 +874,7 @@ static void azaDelayHandleBufferResizes(azaDelay *data, uint32_t samplerate, uin
 	data->buffer = newBuffer;
 }
 
-int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
+int azaDelayProcess(azaDelay *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -848,7 +897,7 @@ int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
 		}
 	}
 	if (data->config.wetEffects) {
-		int err = azaProcessDSP(sideBuffer, data->config.wetEffects);
+		int err = azaDSPProcessSingle(data->config.wetEffects, sideBuffer);
 		if (err) return err;
 	}
 	for (uint8_t c = 0; c < buffer.channels.count; c++) {
@@ -866,7 +915,7 @@ int azaProcessDelay(azaBuffer buffer, azaDelay *data) {
 	}
 	azaPopSideBuffer();
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -990,7 +1039,7 @@ void azaFreeReverb(azaReverb *data) {
 	aza_free(data);
 }
 
-int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
+int azaReverbProcess(azaReverb *data, azaBuffer buffer) {
 	if (data == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -998,7 +1047,7 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 		if (err) return err;
 	}
 	azaBuffer inputBuffer = azaPushSideBufferCopy(buffer);
-	azaProcessDelay(inputBuffer, &data->inputDelay);
+	azaDelayProcess(&data->inputDelay, inputBuffer);
 	azaBuffer sideBufferCombined = azaPushSideBufferZero(buffer.frames, buffer.channels.count, buffer.samplerate);
 	azaBuffer sideBufferEarly = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
 	azaBuffer sideBufferDiffuse = azaPushSideBuffer(buffer.frames, buffer.channels.count, buffer.samplerate);
@@ -1013,8 +1062,8 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 		delay->config.feedback = feedback;
 		filter->config.frequency = color;
 		memcpy(sideBufferEarly.samples, inputBuffer.samples, sizeof(float) * buffer.frames * buffer.channels.count);
-		azaProcessFilter(sideBufferEarly, filter);
-		azaProcessDelay(sideBufferEarly, delay);
+		azaFilterProcess(filter, sideBufferEarly);
+		azaDelayProcess(delay, sideBufferEarly);
 		azaBufferMix(sideBufferCombined, 1.0f, sideBufferEarly, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
 	}
 	for (int tap = AZAUDIO_REVERB_DELAY_COUNT*2/3; tap < AZAUDIO_REVERB_DELAY_COUNT; tap++) {
@@ -1024,14 +1073,14 @@ int azaProcessReverb(azaBuffer buffer, azaReverb *data) {
 		filter->config.frequency = color*4.0f;
 		memcpy(sideBufferDiffuse.samples, sideBufferCombined.samples, sizeof(float) * buffer.frames * buffer.channels.count);
 		azaBufferCopyChannel(sideBufferDiffuse, 0, sideBufferCombined, 0);
-		azaProcessFilter(sideBufferDiffuse, filter);
-		azaProcessDelay(sideBufferDiffuse, delay);
+		azaFilterProcess(filter, sideBufferDiffuse);
+		azaDelayProcess(delay, sideBufferDiffuse);
 		azaBufferMix(sideBufferCombined, 1.0f, sideBufferDiffuse, 1.0f / (float)AZAUDIO_REVERB_DELAY_COUNT);
 	}
 	azaBufferMix(buffer, amountDry, sideBufferCombined, amount);
 	azaPopSideBuffers(4);
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -1066,7 +1115,7 @@ void azaFreeSampler(azaSampler *data) {
 	aza_free(data);
 }
 
-int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
+int azaSamplerProcess(azaSampler *data, azaBuffer buffer) {
 	if (data == NULL || data->config.buffer == NULL) {
 		return AZA_ERROR_NULL_POINTER;
 	} else {
@@ -1135,7 +1184,7 @@ int azaProcessSampler(azaBuffer buffer, azaSampler *data) {
 		}
 	}
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -1172,7 +1221,7 @@ void azaFreeGate(azaGate *data) {
 	aza_free(data);
 }
 
-int azaProcessGate(azaBuffer buffer, azaGate *data) {
+int azaGateProcess(azaGate *data, azaBuffer buffer) {
 	azaBuffer rmsBuffer = azaPushSideBuffer(buffer.frames, 1, buffer.samplerate);
 	azaBuffer activationBuffer = buffer;
 	uint8_t sideBuffersInUse = 1;
@@ -1180,14 +1229,14 @@ int azaProcessGate(azaBuffer buffer, azaGate *data) {
 	if (data->config.activationEffects) {
 		activationBuffer = azaPushSideBufferCopy(buffer);
 		sideBuffersInUse++;
-		int err = azaProcessDSP(activationBuffer, data->config.activationEffects);
+		int err = azaDSPProcessSingle(data->config.activationEffects, activationBuffer);
 		if (err) {
 			azaPopSideBuffers(sideBuffersInUse);
 			return err;
 		}
 	}
 
-	azaProcessRMSCombined(rmsBuffer, activationBuffer, &data->rms, azaOpMax);
+	azaRMSCombinedProcess(&data->rms, rmsBuffer, activationBuffer, azaOpMax);
 	float t = (float)buffer.samplerate / 1000.0f;
 	float attackFactor = expf(-1.0f / (data->config.attack * t));
 	float decayFactor = expf(-1.0f / (data->config.decay * t));
@@ -1214,7 +1263,7 @@ int azaProcessGate(azaBuffer buffer, azaGate *data) {
 	}
 	azaPopSideBuffers(sideBuffersInUse);
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 	return AZA_SUCCESS;
 }
@@ -1330,7 +1379,7 @@ void azaFreeDelayDynamic(azaDelayDynamic *data) {
 	aza_free(data);
 }
 
-int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays) {
+int azaDelayDynamicProcess(azaDelayDynamic *data, azaBuffer buffer, float *endChannelDelays) {
 	int err = AZA_SUCCESS;
 	uint8_t numSideBuffers = 0;
 	if (data == NULL) {
@@ -1345,7 +1394,7 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 	if (data->config.wetEffects) {
 		inputBuffer = azaPushSideBufferCopy(buffer);
 		numSideBuffers++;
-		err = azaProcessDSP(inputBuffer, data->config.wetEffects);
+		err = azaDSPProcessSingle(data->config.wetEffects, inputBuffer);
 		if (err) goto error;
 	} else {
 		inputBuffer = buffer;
@@ -1407,7 +1456,7 @@ int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endCh
 		}
 	}
 	if (data->header.pNext) {
-		return azaProcessDSP(buffer, data->header.pNext);
+		return azaDSPProcessSingle(data->header.pNext, buffer);
 	}
 error:
 	azaPopSideBuffers(numSideBuffers);
@@ -1717,7 +1766,7 @@ static float azaSpatializeGetFilterCutoff(float delay, float dot) {
 	return 192000.0f / AZA_MAX(delay, 1.0f) * (dot * 0.35f + 0.65f);
 }
 
-int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd) {
+int azaSpatializeProcess(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd) {
 	int err = AZA_SUCCESS;
 	assert(dstBuffer.channels.count <= AZA_MAX_CHANNEL_POSITIONS);
 	assert(dstBuffer.samplerate == srcBuffer.samplerate);
@@ -1750,9 +1799,9 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 			azaEnsureChannels(&delay->channelData, 1);
 			azaDelayDynamicChannelConfig *channelConfig = azaDelayDynamicGetChannelConfig(delay, 0);
 			channelConfig->delay = delayStart;
-			azaProcessDelayDynamic(sideBuffer, delay, &delayEnd);
+			azaDelayDynamicProcess(delay, sideBuffer, &delayEnd);
 			channelData->filter.config.frequency = azaSpatializeGetFilterCutoff(delayStart, 1.0f);
-			azaProcessFilter(sideBuffer, &channelData->filter);
+			azaFilterProcess(&channelData->filter, sideBuffer);
 		}
 		azaBufferMixFade(dstBuffer, 1.0f, 1.0f, sideBuffer, srcAmpStart, srcAmpEnd);
 		azaPopSideBuffer();
@@ -1888,9 +1937,9 @@ int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer src
 			azaSpatializeChannelData *channelData = azaGetChannelData(&data->channelData, c);
 			channelData->filter.config.frequency = azaSpatializeGetFilterCutoff(channelDelayStart[c], channelDot[c]);
 			// AZA_LOG_INFO("(c %u) filter freq = %f\n", c, channelData->filter.config.frequency);
-			azaProcessFilter(azaBufferOneChannel(sideBuffer, c), &channelData->filter);
+			azaFilterProcess(&channelData->filter, azaBufferOneChannel(sideBuffer, c));
 		}
-		azaProcessDelayDynamic(sideBuffer, delay, channelDelayEnd);
+		azaDelayDynamicProcess(delay, sideBuffer, channelDelayEnd);
 	}
 	azaBufferMix(dstBuffer, 1.0f, sideBuffer, 1.0f);
 #if PRINT_CHANNEL_AMPS || PRINT_CHANNEL_DELAYS

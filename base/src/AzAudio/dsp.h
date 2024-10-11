@@ -76,6 +76,9 @@ static inline azaBuffer azaBufferOneChannel(azaBuffer src, uint8_t channel) {
 }
 
 
+typedef int (*fp_azaMixCallback)(void *userData, azaBuffer buffer);
+typedef int (*fp_azaMixCallbackDual)(void *userData, azaBuffer dst, azaBuffer src);
+
 
 azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate);
 
@@ -91,6 +94,12 @@ void azaPopSideBuffers(uint8_t count);
 
 typedef enum azaDSPKind {
 	AZA_DSP_NONE=0,
+	// User-defined DSP that acts on a single buffer (transforming it in place)
+	AZA_DSP_USER_SINGLE,
+	// User-defined DSP that takes a src buffer and uses it to contribute to a dst buffer.
+	// NOTE: Any azaDSPs in pNext will be called with the single-buffer interface on the dst buffer.
+	AZA_DSP_USER_DUAL,
+	AZA_DSP_CUBIC_LIMITER,
 	AZA_DSP_RMS,
 	AZA_DSP_LOOKAHEAD_LIMITER,
 	AZA_DSP_FILTER,
@@ -109,7 +118,21 @@ typedef struct azaDSP {
 	uint32_t structSize;
 	struct azaDSP *pNext;
 } azaDSP;
-int azaProcessDSP(azaBuffer buffer, azaDSP *data);
+int azaDSPProcessSingle(azaDSP *data, azaBuffer buffer);
+int azaDSPProcessDual(azaDSP *data, azaBuffer dst, azaBuffer src);
+
+
+
+typedef struct azaDSPUser {
+	azaDSP header;
+	void *userdata;
+	union {
+		fp_azaMixCallback processSingle;
+		fp_azaMixCallbackDual processDual;
+	};
+} azaDSPUser;
+int azaDSPUserSingleProcess(azaDSPUser *data, azaBuffer buffer);
+int azaDSPUserDualProcess(azaDSPUser *data, azaBuffer dst, azaBuffer src);
 
 
 
@@ -163,12 +186,26 @@ azaRMS* azaMakeRMS(azaRMSConfig config, uint8_t channelCapInline);
 void azaFreeRMS(azaRMS *data);
 
 // Takes the rms of all the channels combined with op and puts that into the first channel of dst
-int azaProcessRMSCombined(azaBuffer dst, azaBuffer src, azaRMS *data, fp_azaOp op);
-int azaProcessRMS(azaBuffer buffer, azaRMS *data);
+int azaRMSCombinedProcess(azaRMS *data, azaBuffer dst, azaBuffer src, fp_azaOp op);
+int azaRMSProcess(azaRMS *data, azaBuffer buffer);
 
 
 
-int azaProcessCubicLimiter(azaBuffer buffer);
+typedef azaDSP azaCubicLimiter;
+
+// returns the size in bytes of azaCubicLimiter
+static inline uint32_t azaCubicLimiterGetAllocSize() {
+	return sizeof(azaCubicLimiter);
+}
+// initializes azaCubicLimiter in existing memory
+void azaCubicLimiterInit(azaCubicLimiter *data, uint32_t allocSize);
+
+// Convenience function that allocates and inits an azaCubicLimiter for you
+azaCubicLimiter* azaMakeCubicLimiter();
+// Frees an azaCubicLimiter that was created with azaMakeCubicLimiter
+void azaFreeCubicLimiter(azaCubicLimiter *data);
+
+int azaCubicLimiterProcess(azaCubicLimiter *data, azaBuffer buffer);
 
 
 
@@ -210,7 +247,7 @@ azaLookaheadLimiter* azaMakeLookaheadLimiter(azaLookaheadLimiterConfig config, u
 // Frees an azaLookaheadLimiter that was created with azaMakeLookaheadLimiter
 void azaFreeLookaheadLimiter(azaLookaheadLimiter *data);
 
-int azaProcessLookaheadLimiter(azaBuffer buffer, azaLookaheadLimiter *data);
+int azaLookaheadLimiterProcess(azaLookaheadLimiter *data, azaBuffer buffer);
 
 
 
@@ -249,7 +286,7 @@ azaFilter* azaMakeFilter(azaFilterConfig config, uint8_t channelCapInline);
 // Frees an azaFilter that was created with azaMakeFilter
 void azaFreeFilter(azaFilter *data);
 
-int azaProcessFilter(azaBuffer buffer, azaFilter *data);
+int azaFilterProcess(azaFilter *data, azaBuffer buffer);
 
 
 
@@ -285,7 +322,7 @@ azaCompressor* azaMakeCompressor(azaCompressorConfig config, uint8_t channelCapI
 // Frees an azaCompressor that was created with azaMakeCompressor
 void azaFreeCompressor(azaCompressor *data);
 
-int azaProcessCompressor(azaBuffer buffer, azaCompressor *data);
+int azaCompressorProcess(azaCompressor *data, azaBuffer buffer);
 
 
 
@@ -340,7 +377,7 @@ azaDelay* azaMakeDelay(azaDelayConfig config, uint8_t channelCapInline);
 // Frees an azaDelay that was created with azaMakeDelay
 void azaFreeDelay(azaDelay *data);
 
-int azaProcessDelay(azaBuffer buffer, azaDelay *data);
+int azaDelayProcess(azaDelay *data, azaBuffer buffer);
 
 
 
@@ -381,7 +418,7 @@ azaReverb* azaMakeReverb(azaReverbConfig config, uint8_t channelCapInline);
 // Frees an azaReverb that was created with azaMakeReverb
 void azaFreeReverb(azaReverb *data);
 
-int azaProcessReverb(azaBuffer buffer, azaReverb *data);
+int azaReverbProcess(azaReverb *data, azaBuffer buffer);
 
 
 
@@ -421,7 +458,7 @@ azaSampler* azaMakeSampler(azaSamplerConfig config);
 // Frees an azaSampler that was created with azaMakeSampler
 void azaFreeSampler(azaSampler *data);
 
-int azaProcessSampler(azaBuffer buffer, azaSampler *data);
+int azaSamplerProcess(azaSampler *data, azaBuffer buffer);
 
 
 
@@ -456,7 +493,7 @@ azaGate* azaMakeGate(azaGateConfig config);
 // Frees an azaGate that was created with azaMakeGate
 void azaFreeGate(azaGate *data);
 
-int azaProcessGate(azaBuffer buffer, azaGate *data);
+int azaGateProcess(azaGate *data, azaBuffer buffer);
 
 
 
@@ -518,7 +555,7 @@ azaDelayDynamic* azaMakeDelayDynamic(azaDelayDynamicConfig config, uint8_t chann
 void azaFreeDelayDynamic(azaDelayDynamic *data);
 
 // if endChannelDelays is not NULL, then over the length of the buffer each channel's delay will lerp towards its respective endChannelDelay, and finally set the value in the channel config once it's done processing.
-int azaProcessDelayDynamic(azaBuffer buffer, azaDelayDynamic *data, float *endChannelDelays);
+int azaDelayDynamicProcess(azaDelayDynamic *data, azaBuffer buffer, float *endChannelDelays);
 
 
 
@@ -620,7 +657,7 @@ void azaFreeSpatialize(azaSpatialize *data);
 // dstBuffer and srcBuffer must have the same number of frames and the same samplerate.
 // srcBuffer MUST be 1-channel
 // Doesn't attenuate the volume by distance. You must do that yourself and pass the result into srcAmp.
-int azaProcessSpatialize(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd);
+int azaSpatializeProcess(azaSpatialize *data, azaBuffer dstBuffer, azaBuffer srcBuffer, azaVec3 srcPosStart, float srcAmpStart, azaVec3 srcPosEnd, float srcAmpEnd);
 
 
 
