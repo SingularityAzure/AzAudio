@@ -31,9 +31,9 @@ typedef struct azaBuffer {
 	// distance between samples from one channel in number of floats
 	uint16_t stride;
 	// how many channels are stored in this buffer for user-created buffers, or how many channels should be accessed by DSP functions, and an optional layout for said channels. Some functions expect the layout to be fully-specified, others don't care.
-	azaChannelLayout channels;
+	azaChannelLayout channelLayout;
 } azaBuffer;
-// You must first set frames and channels before calling this to allocate samples.
+// You must first set frames and channelLayout before calling this to allocate samples.
 // If samples are externally-managed, you don't have to call either of these.
 int azaBufferInit(azaBuffer *data);
 int azaBufferDeinit(azaBuffer *data);
@@ -56,28 +56,27 @@ void azaBufferCopyChannel(azaBuffer dst, uint8_t channelDst, azaBuffer src, uint
 
 static inline azaBuffer azaBufferOneSample(float *sample, uint32_t samplerate) {
 	return AZA_CLITERAL(azaBuffer) {
-		/* .samples    = */ sample,
-		/* .samplerate = */ samplerate,
-		/* .frames     = */ 1,
-		/* .stride     = */ 1,
-		/* .channels   = */ azaChannelLayoutMono(),
+		/* .samples       = */ sample,
+		/* .samplerate    = */ samplerate,
+		/* .frames        = */ 1,
+		/* .stride        = */ 1,
+		/* .channelLayout = */ azaChannelLayoutMono(),
 	};
 }
 
 static inline azaBuffer azaBufferOneChannel(azaBuffer src, uint8_t channel) {
 	return AZA_CLITERAL(azaBuffer) {
-		/* .samples    = */ src.samples + channel,
-		/* .samplerate = */ src.samplerate,
-		/* .frames     = */ src.frames,
-		/* .stride     = */ src.stride,
-		// TODO: We probably need to extract the correct channel position.
-		/* .channels   = */ azaChannelLayoutOneChannel(src.channels, channel),
+		/* .samples       = */ src.samples + channel,
+		/* .samplerate    = */ src.samplerate,
+		/* .frames        = */ src.frames,
+		/* .stride        = */ src.stride,
+		/* .channelLayout = */ azaChannelLayoutOneChannel(src.channelLayout, channel),
 	};
 }
 
 
-typedef int (*fp_azaMixCallback)(void *userData, azaBuffer buffer);
-typedef int (*fp_azaMixCallbackDual)(void *userData, azaBuffer dst, azaBuffer src);
+typedef int (*fp_azaMixCallback)(void *userdata, azaBuffer buffer);
+typedef int (*fp_azaMixCallbackDual)(void *userdata, azaBuffer dst, azaBuffer src);
 
 
 azaBuffer azaPushSideBuffer(uint32_t frames, uint32_t channels, uint32_t samplerate);

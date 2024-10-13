@@ -76,7 +76,7 @@ float angle = 0.0f;
 float angle2 = 0.0f;
 std::vector<float> endChannelDelays;
 
-int mixCallbackOutput(void *userData, azaBuffer buffer) {
+int mixCallbackOutput(void *userdata, azaBuffer buffer) {
 	static float *processingBuffer = new float[2048];
 	static size_t processingBufferCapacity = 2048;
 	if (processingBufferCapacity < buffer.frames) {
@@ -121,7 +121,7 @@ int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	}
 	int err;
 	azaBuffer srcBuffer;
-	srcBuffer.channels.count = 1;
+	srcBuffer.channelLayout.count = 1;
 	srcBuffer.frames = buffer.frames;
 	srcBuffer.samplerate = buffer.samplerate;
 	srcBuffer.samples = processingBuffer;
@@ -149,14 +149,14 @@ int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	if ((err = azaGateProcess(gate, srcBuffer))) {
 		return err;
 	}
-	memset(buffer.samples, 0, buffer.frames * buffer.channels.count * sizeof(float));
+	memset(buffer.samples, 0, buffer.frames * buffer.channelLayout.count * sizeof(float));
 	float volumeStart = azaClampf(10.0f / azaVec3Norm(srcPosStart), 0.0f, 1.0f);
 	float volumeEnd = azaClampf(10.0f / azaVec3Norm(srcPosEnd), 0.0f, 1.0f);
 	if ((err = azaSpatializeProcess(spatialize, buffer, srcBuffer, srcPosStart, volumeStart, srcPosEnd, volumeEnd))) {
 		return err;
 	}
 	// printf("gate gain: %f\n", gate->gain);
-	endChannelDelays.resize(buffer.channels.count);
+	endChannelDelays.resize(buffer.channelLayout.count);
 	for (float &delay : endChannelDelays) {
 		delay = 600.0f + sinf(angle2) * 400.0f;
 	}
@@ -187,7 +187,7 @@ int mixCallbackOutput(void *userData, azaBuffer buffer) {
 	return AZA_SUCCESS;
 }
 
-int mixCallbackInput(void *userData, azaBuffer buffer) {
+int mixCallbackInput(void *userdata, azaBuffer buffer) {
 	numInputBuffers++;
 	lastInputBufferSize = buffer.frames;
 	size_t b_i = micBuffer.size();
@@ -229,21 +229,21 @@ int main(int argumentCount, char** argumentValues) {
 		}
 		azaStream streamInput = {0};
 		streamInput.mixCallback = mixCallbackInput;
-		streamInput.deviceInterface = AZA_INPUT;
-		streamInput.channels = azaChannelLayoutMono();
-		// streamInput.samplerate = 44100/4;
-		if (azaStreamInit(&streamInput) != AZA_SUCCESS) {
+		if (azaStreamInit(&streamInput, azaStreamConfig {
+				/*.deviceName = */ NULL,
+				/*.samplerate = */ 0,
+				/*.channels   = */ azaChannelLayoutMono(),
+			}, AZA_INPUT, AZA_STREAM_COMMIT_FORMAT, false) != AZA_SUCCESS) {
 			throw a_fit("Failed to init input stream!");
 		}
-		// This ensures that if anything changes in the backend, our input stream will always have the same channels and samplerate.
-		// TODO: Make this a flag somewhere, perhaps in azaStreamInit
-		streamInput.channels = azaStreamGetChannelLayout(&streamInput);
-		streamInput.samplerate = azaStreamGetSamplerate(&streamInput);
 		azaStream streamOutput = {0};
 		// streamOutput.channels = azaChannelLayoutStandardFromCount(NUM_CHANNELS);
-		streamOutput.samplerate = streamInput.samplerate;
 		streamOutput.mixCallback = mixCallbackOutput;
-		if (azaStreamInit(&streamOutput) != AZA_SUCCESS) {
+		if (azaStreamInit(&streamOutput, azaStreamConfig {
+				/* .deviceName = */ NULL,
+				/* .samplerate = */ azaStreamGetSamplerate(&streamInput),
+				/* .channels   = */ 0,
+			}, AZA_OUTPUT, 0, false) != AZA_SUCCESS) {
 			throw a_fit("Failed to init output stream!");
 		}
 		uint8_t outputChannelCount = azaStreamGetChannelLayout(&streamOutput).count;

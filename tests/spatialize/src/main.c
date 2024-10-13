@@ -43,10 +43,10 @@ int loadSoundFileIntoBuffer(azaBuffer *buffer, const char *filename) {
 	buffer->frames = stb_vorbis_stream_length_in_samples(vorbis);
 	stb_vorbis_info info = stb_vorbis_get_info(vorbis);
 	printf("Sound \"%s\" has %u channels and a samplerate of %u\n", filename, info.channels, info.sample_rate);
-	buffer->channels.count = info.channels;
+	buffer->channelLayout.count = info.channels;
 	buffer->samplerate = info.sample_rate;
 	azaBufferInit(buffer);
-	stb_vorbis_get_samples_float_interleaved(vorbis, buffer->channels.count, buffer->samples, buffer->frames * buffer->channels.count);
+	stb_vorbis_get_samples_float_interleaved(vorbis, buffer->channelLayout.count, buffer->samples, buffer->frames * buffer->channelLayout.count);
 	stb_vorbis_close(vorbis);
 	return 0;
 }
@@ -94,12 +94,12 @@ void updateObjects(uint32_t count, float timeDelta) {
 	}
 }
 
-int mixCallbackOutput(void *userData, azaBuffer buffer) {
+int mixCallbackOutput(void *userdata, azaBuffer buffer) {
 	float timeDelta = (float)buffer.frames / (float)buffer.samplerate;
 	int err;
-	updateObjects(bufferCat.channels.count, timeDelta);
+	updateObjects(bufferCat.channelLayout.count, timeDelta);
 	azaBufferZero(buffer);
-	azaBuffer sampledBuffer = azaPushSideBufferZero(buffer.frames, sampler->config.buffer->channels.count, buffer.samplerate);
+	azaBuffer sampledBuffer = azaPushSideBufferZero(buffer.frames, sampler->config.buffer->channelLayout.count, buffer.samplerate);
 
 	if ((err = azaSamplerProcess(sampler, sampledBuffer))) {
 		char buffer[64];
@@ -107,7 +107,7 @@ int mixCallbackOutput(void *userData, azaBuffer buffer) {
 		goto done;
 	}
 
-	for (uint8_t c = 0; c < bufferCat.channels.count; c++) {
+	for (uint8_t c = 0; c < bufferCat.channelLayout.count; c++) {
 		float volumeStart = azaClampf(3.0f / azaVec3Norm(objects[c].posPrev), 0.0f, 1.0f);
 		float volumeEnd = azaClampf(3.0f / azaVec3Norm(objects[c].pos), 0.0f, 1.0f);
 		if ((err = azaSpatializeProcess(spatialize[c], buffer, azaBufferOneChannel(sampledBuffer, c), objects[c].posPrev, volumeStart, objects[c].pos, volumeEnd))) {
@@ -148,7 +148,7 @@ int main(int argumentCount, char** argumentValues) {
 	}
 
 	if (loadSoundFileIntoBuffer(&bufferCat, soundFilename)) return 1;
-	if (bufferCat.channels.count == 0) {
+	if (bufferCat.channelLayout.count == 0) {
 		fprintf(stderr, "Sound \"%s\" has no channels!\n", soundFilename);
 		return 1;
 	}
@@ -161,7 +161,7 @@ int main(int argumentCount, char** argumentValues) {
 
 	azaStream streamOutput = {0};
 	streamOutput.mixCallback = mixCallbackOutput;
-	if ((err = azaStreamInit(&streamOutput)) != AZA_SUCCESS) {
+	if ((err = azaStreamInitDefault(&streamOutput, AZA_OUTPUT, false)) != AZA_SUCCESS) {
 		char buffer[64];
 		fprintf(stderr, "Failed to init output stream! (%s)\n", azaErrorString(err, buffer, sizeof(buffer)));
 		return 1;
@@ -175,10 +175,10 @@ int main(int argumentCount, char** argumentValues) {
 		.gain = 0.0f,
 	});
 
-	objects = calloc(bufferCat.channels.count, sizeof(Object));
-	updateObjects(bufferCat.channels.count, 0.0f);
-	spatialize = malloc(sizeof(azaSpatialize*) * bufferCat.channels.count);
-	for (uint8_t c = 0; c < bufferCat.channels.count; c++) {
+	objects = calloc(bufferCat.channelLayout.count, sizeof(Object));
+	updateObjects(bufferCat.channelLayout.count, 0.0f);
+	spatialize = malloc(sizeof(azaSpatialize*) * bufferCat.channelLayout.count);
+	for (uint8_t c = 0; c < bufferCat.channelLayout.count; c++) {
 		objects[c].pos = objects[c].target;
 		spatialize[c] = azaMakeSpatialize((azaSpatializeConfig) {
 			.world       = AZA_WORLD_DEFAULT,
@@ -200,7 +200,7 @@ int main(int argumentCount, char** argumentValues) {
 
 	free(objects);
 	azaFreeSampler(sampler);
-	for (uint8_t c = 0; c < bufferCat.channels.count; c++) {
+	for (uint8_t c = 0; c < bufferCat.channelLayout.count; c++) {
 		azaFreeSpatialize(spatialize[c]);
 	}
 	free(spatialize);

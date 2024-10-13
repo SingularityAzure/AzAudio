@@ -17,7 +17,7 @@ azaLookaheadLimiter *limiter = NULL;
 float angle = 0.0f;
 float time = 0.0f;
 
-int mixCallbackOutput(void *userData, azaBuffer buffer) {
+int mixCallbackOutput(void *userdata, azaBuffer buffer) {
 	float frameDelta = 1.0f / (float)buffer.samplerate;
 	float timeDelta = (float)buffer.frames * frameDelta;
 	int32_t clickFrame = (int32_t)((0.5f - time) * (float)buffer.samplerate);
@@ -30,7 +30,7 @@ int mixCallbackOutput(void *userData, azaBuffer buffer) {
 		angle += frameDelta * 2000.0f * AZA_TAU;
 		if (angle > AZA_TAU) angle -= AZA_TAU;
 		if (i == clickFrame || i + 16 == clickFrame) sample = 1.0f;
-		for (uint8_t c = 0; c < buffer.channels.count; c++) {
+		for (uint8_t c = 0; c < buffer.channelLayout.count; c++) {
 			buffer.samples[i * buffer.stride + c] = sample;
 		}
 	}
@@ -53,7 +53,7 @@ int main(int argumentCount, char** argumentValues) {
 
 	azaStream streamOutput = {0};
 	streamOutput.mixCallback = mixCallbackOutput;
-	if ((err = azaStreamInit(&streamOutput)) != AZA_SUCCESS) {
+	if ((err = azaStreamInitDefault(&streamOutput, AZA_OUTPUT, false)) != AZA_SUCCESS) {
 		char buffer[64];
 		fprintf(stderr, "Failed to init output stream! (%s)\n", azaErrorString(err, buffer, sizeof(buffer)));
 		return 1;
