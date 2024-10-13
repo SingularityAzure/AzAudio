@@ -97,6 +97,9 @@ extern fp_azaStreamGetSamplerate azaStreamGetSamplerate;
 typedef azaChannelLayout (*fp_azaStreamGetChannelLayout)(azaStream *stream);
 extern fp_azaStreamGetChannelLayout azaStreamGetChannelLayout;
 
+typedef uint32_t (*fp_azaStreamGetBufferFrameCount)(azaStream *stream);
+extern fp_azaStreamGetBufferFrameCount azaStreamGetBufferFrameCount;
+
 typedef size_t (*fp_azaGetDeviceCount)(azaDeviceInterface interface);
 extern fp_azaGetDeviceCount azaGetDeviceCount;
 

@@ -87,6 +87,7 @@ fp_azaStreamGetActive azaStreamGetActive;
 fp_azaStreamGetDeviceName azaStreamGetDeviceName;
 fp_azaStreamGetSamplerate azaStreamGetSamplerate;
 fp_azaStreamGetChannelLayout azaStreamGetChannelLayout;
+fp_azaStreamGetBufferFrameCount azaStreamGetBufferFrameCount;
 fp_azaGetDeviceCount azaGetDeviceCount;
 fp_azaGetDeviceName azaGetDeviceName;
 fp_azaGetDeviceChannels azaGetDeviceChannels;

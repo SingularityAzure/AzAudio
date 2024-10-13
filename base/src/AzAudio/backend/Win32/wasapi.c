@@ -238,6 +238,11 @@ static azaChannelLayout azaStreamGetChannelLayoutWASAPI(azaStream *stream) {
 	return data->processingBuffer.channelLayout;
 }
 
+static uint32_t azaStreamGetBufferFrameCountWASAPI(azaStream *stream) {
+	azaStreamData *data = stream->data;
+	return data->processingBuffer.frames;
+}
+
 static size_t azaFindDefaultDevice(azaDeviceInfo devicePool[], size_t deviceCount, EDataFlow dataFlow, const char *poolTag) {
 #define FAIL_ACTION result = AZA_MAX_DEVICES; goto error
 	size_t result = AZA_MAX_DEVICES;
@@ -1007,6 +1012,7 @@ int azaBackendWASAPIInit() {
 	azaStreamGetDeviceName = azaStreamGetDeviceNameWASAPI;
 	azaStreamGetSamplerate = azaStreamGetSamplerateWASAPI;
 	azaStreamGetChannelLayout = azaStreamGetChannelLayoutWASAPI;
+	azaStreamGetBufferFrameCount = azaStreamGetBufferFrameCountWASAPI;
 	azaGetDeviceCount = azaGetDeviceCountWASAPI;
 	azaGetDeviceName = azaGetDeviceNameWASAPI;
 	azaGetDeviceChannels = azaGetDeviceChannelsWASAPI;
