@@ -3,6 +3,7 @@
 	Author: Philip Haynes
 */
 
+#include "../../AzAudio.h"
 #include "../backend.h"
 #include "../interface.h"
 #include "../../error.h"

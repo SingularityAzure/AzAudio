@@ -7,12 +7,9 @@
 #ifndef AZAUDIO_HELPERS_H
 #define AZAUDIO_HELPERS_H
 
-#include "AzAudio.h"
+#include "math.h"
 
 #include <assert.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,10 +27,6 @@ float linc(float x);
 
 // sinc with a hann window with a total size of 1+2*radius
 float lanczos(float x, float radius);
-
-static inline float lerp(float a, float b, float t) {
-	return a + (b - a) * t;
-}
 
 static inline float linstepf(float a, float min, float max) {
 	return azaClampf((a - min) / (max - min), 0.0f, 1.0f);
@@ -102,6 +95,30 @@ static inline size_t azaAddSizeWithAlign(size_t sizeStart, size_t sizeAdded, siz
 
 static inline char* azaGetBufferOffset(char *buffer, size_t offset, size_t alignment) {
 	return buffer + aza_align(offset, alignment);
+}
+
+#define AZA_DYNAMIC_ARRAY_DECLARE(type, name)\
+struct {\
+	type *data;\
+	uint32_t count;\
+	uint32_t capacity;\
+} name;
+
+#define AZA_DYNAMIC_ARRAY_APPEND(type, name, value) {\
+	if ((name).count == (name).capacity) {\
+		(name).capacity = (uint32_t)aza_grow((name).capacity, (name).count+1, 8);\
+		type *newData = aza_calloc((name).capacity, sizeof(type));\
+		memcpy(newData, (name).data, (name).count * sizeof(type));\
+		aza_free((name).data);\
+		(name).data = newData;\
+	}\
+	(name).data[(name).count++] = value;\
+}
+
+#define AZA_DYNAMIC_ARRAY_ERASE(name, index, num) {\
+	for (int64_t aza_i = (index); aza_i < (int64_t)(name).count - (num); aza_i++) {\
+		(name).data[aza_i] = (name).data[aza_i + (num)];\
+	}\
 }
 
 #ifdef __cplusplus

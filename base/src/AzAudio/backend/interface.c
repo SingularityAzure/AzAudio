@@ -5,7 +5,7 @@
 
 #include "interface.h"
 
-#include "../helpers.h"
+#include "../AzAudio.h"
 #include "backend.h"
 #include "../error.h"
 

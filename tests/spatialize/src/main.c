@@ -45,7 +45,7 @@ int loadSoundFileIntoBuffer(azaBuffer *buffer, const char *filename) {
 	printf("Sound \"%s\" has %u channels and a samplerate of %u\n", filename, info.channels, info.sample_rate);
 	buffer->channelLayout.count = info.channels;
 	buffer->samplerate = info.sample_rate;
-	azaBufferInit(buffer);
+	azaBufferInit(buffer, buffer->frames, buffer->channelLayout);
 	stb_vorbis_get_samples_float_interleaved(vorbis, buffer->channelLayout.count, buffer->samples, buffer->frames * buffer->channelLayout.count);
 	stb_vorbis_close(vorbis);
 	return 0;

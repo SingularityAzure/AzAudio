@@ -33,6 +33,9 @@ static inline float azaClampf(float a, float min, float max) {
 	return a < min ? min : (a > max ? max : a);
 }
 
+static inline float azaLerp(float a, float b, float t) {
+	return a + (b - a) * t;
+}
 
 typedef union azaVec3 {
 	struct {
