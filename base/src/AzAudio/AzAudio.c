@@ -30,6 +30,14 @@ azaAllocatorCallbacks azaAllocator = {
 	free,
 };
 
+float azaOscSineValues[AZA_OSC_SINE_SAMPLES+1];
+
+void azaInitOscillators() {
+	for (uint32_t i = 0; i < AZA_OSC_SINE_SAMPLES+1; i++) {
+		azaOscSineValues[i] = sinf((float)i / AZA_OSC_SINE_SAMPLES * AZA_TAU);
+	}
+}
+
 int azaInit() {
 	char levelStr[64];
 	size_t levelLen = 0;
@@ -49,6 +57,7 @@ int azaInit() {
 	AZA_LOG_INFO("AzAudio Version: " AZA_VERSION_FORMAT_STR "\n", AZA_VERSION_ARGS);
 
 	azaKernelMakeLanczos(&azaKernelDefaultLanczos, 128.0f, 50.0f);
+	azaInitOscillators();
 
 	memset(&azaWorldDefault, 0, sizeof(azaWorldDefault));
 	azaWorldDefault.orientation.right   = (azaVec3) { 1.0f, 0.0f, 0.0f };

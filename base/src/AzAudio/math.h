@@ -37,6 +37,39 @@ static inline float azaLerp(float a, float b, float t) {
 	return a + (b - a) * t;
 }
 
+static inline float azaWrap01f(float a) {
+	int intPart = (int)a - signbit(a);
+	return a - (float)intPart;
+}
+
+#define AZA_OSC_SINE_SAMPLES 128
+extern float azaOscSineValues[AZA_OSC_SINE_SAMPLES+1];
+// A LUT-based approximate sine oscillator where t is periodic between 0 and 1
+static inline float azaOscSine(float t) {
+	t = azaWrap01f(t);
+	t *= AZA_OSC_SINE_SAMPLES;
+	uint32_t index = (uint32_t)t;
+	float offset = t - (float)index;
+	return azaLerp(azaOscSineValues[index], azaOscSineValues[index+1], offset);
+}
+static inline float azaOscCosine(float t) {
+	return azaOscSine(t + 0.25f);
+}
+
+static inline float azaOscSquare(float t) {
+	t = azaWrap01f(t);
+	return (float)((int)(t * 2.0f)) * 2.0f - 1.0f;
+}
+
+static inline float azaOscTriangle(float t) {
+	return 4.0f * (azaAbs(azaWrap01f(t + 0.25f) - 0.5f) - 0.25f);
+}
+
+static inline float azaOscSaw(float t) {
+	return azaWrap01f(t + 0.5f) * 2.0f - 1.0f;
+}
+
+
 typedef union azaVec3 {
 	struct {
 		float x, y, z;
